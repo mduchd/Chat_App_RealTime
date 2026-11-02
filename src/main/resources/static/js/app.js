@@ -1468,3 +1468,973 @@ function selectConversation(conversationId) {
     emptyStateEl.classList.add('d-none');
     activeViewEl.classList.remove('d-none');
     appContainerEl.classList.add('mobile-chat-active');
+
+    applyConversationTheme(conv.themeColor || '#0084ff');
+    updateActiveChatHeaderAndDrawer(conv);
+    renderConversationList();
+    renderMessages(conv);
+    syncComposerButtons();
+
+    if (window.innerWidth >= 768 && !conv.blocked) {
+        document.getElementById('messageInput')?.focus();
+    }
+}
+
+function updateActiveChatHeaderAndDrawer(conv) {
+    if (!conv) return;
+
+    const isGroup = conv.type === 'GROUP';
+    const displayName = getDisplayConversationName(conv);
+    const displayAvatar = getDisplayConversationAvatar(conv);
+
+    const avatarHtml = isGroup
+        ? `<div class="conv-avatar-group">${escapeHtml(conv.avatarText || 'GR')}</div>`
+        : `<img src="${displayAvatar}" alt="${escapeHtml(displayName)}" class="conv-avatar">`;
+
+    document.getElementById('chatHeaderAvatarWrapper').innerHTML = avatarHtml;
+    document.getElementById('chatHeaderName').textContent = displayName;
+    document.getElementById('chatHeaderBadge').textContent = isGroup ? 'Nhóm chat' : 'Cá nhân';
+    document.getElementById('chatHeaderStatusText').textContent = conv.blocked
+        ? 'Đã chặn'
+        : conv.statusText;
+
+    document.getElementById('chatHeaderPinnedIcon').classList.toggle('d-none', !conv.pinned);
+    document.getElementById('chatHeaderMutedIcon').classList.toggle('d-none', !conv.muted);
+    document.getElementById('btnHeaderAddMember').classList.toggle('d-none', !isGroup);
+
+    const headerDot = document.getElementById('chatHeaderDot');
+    headerDot.className = conv.online && !conv.blocked ? 'status-dot online pulse' : 'status-dot';
+
+    if (isGroup && conv.roomId) {
+        subscribeToRoomTopic(conv.roomId);
+    }
+
+    document.getElementById('blockedBanner').classList.toggle('d-none', !conv.blocked);
+    document.getElementById('chatInputFooter').classList.toggle('d-none', conv.blocked);
+
+    const quickEmoji = conv.quickEmoji || '👍';
+    document.getElementById('btnQuickReactionSend').textContent = quickEmoji;
+    document.getElementById('drawerCurrentEmojiIcon').textContent = quickEmoji;
+
+    document.getElementById('drawerAvatar').innerHTML = avatarHtml;
+    document.getElementById('drawerName').textContent = displayName;
+    document.getElementById('drawerStatus').textContent = conv.blocked
+        ? 'Tài khoản đang bị chặn'
+        : conv.statusText;
+
+    document.getElementById('drawerPinLabel').textContent = conv.pinned ? 'Bỏ ghim' : 'Ghim';
+    document.getElementById('drawerMuteLabel').textContent = conv.muted ? 'Bật TB' : 'Tắt TB';
+    document.getElementById('drawerArchiveLabel').textContent = conv.archived
+        ? 'Khôi phục'
+        : 'Lưu trữ';
+    document.getElementById('drawerRenameLabel').textContent = isGroup
+        ? 'Đổi tên nhóm chat'
+        : 'Đặt biệt danh';
+    document.getElementById('drawerBlockLabel').textContent = conv.blocked
+        ? isGroup
+            ? 'Bỏ chặn nhóm'
+            : 'Bỏ chặn người dùng'
+        : isGroup
+        ? 'Rời & Chặn nhóm'
+        : 'Chặn người dùng';
+
+    const sharedFilesEl = document.getElementById('drawerSharedFiles');
+    if (conv.sharedFiles && conv.sharedFiles.length > 0) {
+        sharedFilesEl.innerHTML = conv.sharedFiles
+            .map(
+                (f) => `
+            <div class="d-flex align-items-center gap-2 py-1 text-truncate">
+                <i class="fa-regular fa-file-lines text-primary"></i>
+                <span class="text-truncate">${escapeHtml(f)}</span>
+            </div>
+        `
+            )
+            .join('');
+    } else {
+        sharedFilesEl.textContent = 'Chưa có tệp đính kèm nào';
+    }
+
+    const drawerGroupSection = document.getElementById('drawerGroupSection');
+    drawerGroupSection.classList.toggle('d-none', !isGroup);
+
+    if (isGroup) {
+        const members = conv.members || [{ ...CURRENT_USER, role: 'Trưởng nhóm' }];
+        document.getElementById('drawerMemberCount').textContent = members.length;
+        const membersListEl = document.getElementById('drawerMembersList');
+
+        membersListEl.innerHTML = members
+            .map(
+                (m) => `
+            <div class="drawer-member-item">
+                <div class="d-flex align-items-center gap-2 min-w-0">
+                    <img src="${m.avatar}" alt="${escapeHtml(m.name)}" class="drawer-member-avatar">
+                    <div class="min-w-0">
+                        <div class="drawer-member-name text-truncate">${escapeHtml(m.name)}</div>
+                        <div class="drawer-member-role">${escapeHtml(m.role || 'Thành viên')}</div>
+                    </div>
+                </div>
+                ${
+                    m.id !== CURRENT_USER.id
+                        ? `<button type="button" class="btn-remove-member" data-remove-member-id="${m.id}" title="Mời khỏi nhóm">
+                               <i class="fa-solid fa-user-xmark"></i>
+                           </button>`
+                        : `<span class="badge bg-primary-subtle text-primary" style="font-size: 0.65rem;">Bạn</span>`
+                }
+            </div>
+        `
+            )
+            .join('');
+
+        membersListEl.querySelectorAll('[data-remove-member-id]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const memberId = btn.getAttribute('data-remove-member-id');
+                removeMemberFromActiveGroup(memberId);
+            });
+        });
+    }
+}
+
+function renderMessages(conversation) {
+    const chatLogEl = document.getElementById('chatLog');
+    if (!chatLogEl || !conversation) return;
+
+    const visibleMessages = conversation.messages.filter((msg) => {
+        if (!inChatSearchQuery) return true;
+        return (msg.content || '').toLowerCase().includes(inChatSearchQuery.toLowerCase());
+    });
+
+    if (visibleMessages.length === 0) {
+        chatLogEl.innerHTML = `
+            <div class="text-center text-muted my-auto py-5">
+                <div class="small">Hãy gửi tin nhắn đầu tiên để bắt đầu trò chuyện!</div>
+            </div>
+        `;
+        return;
+    }
+
+    const messagesHtml = visibleMessages
+        .map((msg) => {
+            const isSentByMe = msg.senderId === CURRENT_USER.id;
+            const rowClass = isSentByMe ? 'sent' : 'received';
+            const timeFormatted = formatFullTime(msg.timestamp);
+
+            const senderAvatarHtml = !isSentByMe
+                ? `<img src="${msg.senderAvatar || getDisplayConversationAvatar(conversation) || 'https://ui-avatars.com/api/?name=U&background=0ea5e9&color=fff'}"
+                        alt="${escapeHtml(msg.senderName)}"
+                        class="msg-sender-avatar">`
+                : '';
+
+            const senderNameHtml =
+                !isSentByMe && conversation.type === 'GROUP'
+                    ? `<div class="msg-sender-name">${escapeHtml(msg.senderName)}</div>`
+                    : '';
+
+            const quotedBoxHtml = msg.replyTo
+                ? `<div class="msg-quoted-box">
+                       <div class="fw-semibold"><i class="fa-solid fa-reply me-1"></i>${escapeHtml(msg.replyTo.senderName)}</div>
+                       <div class="text-truncate">${escapeHtml(msg.replyTo.content)}</div>
+                   </div>`
+                : '';
+
+            const imageHtml = msg.imageUrl
+                ? `<img src="${msg.imageUrl}" alt="Hình ảnh đính kèm" class="msg-attached-image">`
+                : '';
+
+            const reactionHtml = msg.reaction
+                ? `<span class="msg-reaction-pill">${msg.reaction}</span>`
+                : '';
+
+            const hoverToolbarHtml = !msg.unsent
+                ? `<div class="msg-hover-toolbar">
+                       <button type="button" class="msg-tool-btn" data-react-id="${msg.id}" data-emoji="❤️" title="Yêu thích">❤️</button>
+                       <button type="button" class="msg-tool-btn" data-react-id="${msg.id}" data-emoji="😆" title="Haha">😆</button>
+                       <button type="button" class="msg-tool-btn" data-react-id="${msg.id}" data-emoji="😮" title="Wow">😮</button>
+                       <button type="button" class="msg-tool-btn" data-react-id="${msg.id}" data-emoji="👍" title="Thích">👍</button>
+                       <button type="button" class="msg-tool-btn" data-reply-id="${msg.id}" title="Trả lời">
+                           <i class="fa-solid fa-reply"></i>
+                       </button>
+                       ${
+                           isSentByMe
+                               ? `<button type="button" class="msg-tool-btn text-danger" data-unsend-id="${msg.id}" title="Thu hồi tin nhắn">
+                                      <i class="fa-regular fa-trash-can"></i>
+                                  </button>`
+                               : ''
+                       }
+                   </div>`
+                : '';
+
+            const deliveryIconHtml = isSentByMe
+                ? `<i class="fa-solid fa-circle-check" style="font-size: 0.68rem; color: var(--primary-bright);"></i>`
+                : '';
+
+            return `
+                <div class="message-row ${rowClass}">
+                    ${senderAvatarHtml}
+                    <div class="message-group">
+                        ${senderNameHtml}
+                        ${quotedBoxHtml}
+                        <div class="message-bubble-wrap">
+                            <div class="message-bubble ${msg.unsent ? 'unsent' : ''}">
+                                ${imageHtml}
+                                ${msg.content ? `<div>${escapeHtml(msg.content)}</div>` : ''}
+                                ${reactionHtml}
+                            </div>
+                            ${hoverToolbarHtml}
+                        </div>
+                        <div class="message-meta">
+                            <span>${timeFormatted}</span>
+                            ${deliveryIconHtml}
+                        </div>
+                    </div>
+                </div>
+            `;
+        })
+        .join('');
+
+    chatLogEl.innerHTML = `
+        <div class="chat-date-divider">Hôm nay</div>
+        ${messagesHtml}
+    `;
+
+    chatLogEl.querySelectorAll('[data-react-id]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            toggleMessageReaction(
+                btn.getAttribute('data-react-id'),
+                btn.getAttribute('data-emoji')
+            );
+        });
+    });
+
+    chatLogEl.querySelectorAll('[data-reply-id]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            startReplyToMessage(btn.getAttribute('data-reply-id'));
+        });
+    });
+
+    chatLogEl.querySelectorAll('[data-unsend-id]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            unsendMessage(btn.getAttribute('data-unsend-id'));
+        });
+    });
+
+    chatLogEl.scrollTop = chatLogEl.scrollHeight;
+}
+
+function openContextMenu(convId, x, y) {
+    const conv = getConversationById(convId);
+    if (!conv) return;
+
+    contextMenuTargetConvId = convId;
+    const menuEl = document.getElementById('conversationContextMenu');
+
+    document.getElementById('ctxUnreadText').textContent =
+        conv.unreadCount > 0 ? 'Đánh dấu là đã đọc' : 'Đánh dấu là chưa đọc';
+    document.getElementById('ctxPinText').textContent = conv.pinned
+        ? 'Bỏ ghim đoạn chat'
+        : 'Ghim đoạn chat';
+    document.getElementById('ctxMuteText').textContent = conv.muted
+        ? 'Bật thông báo'
+        : 'Tắt thông báo';
+    document.getElementById('ctxArchiveText').textContent = conv.archived
+        ? 'Bỏ lưu trữ đoạn chat'
+        : 'Lưu trữ đoạn chat';
+    document.getElementById('ctxBlockText').textContent = conv.blocked ? 'Bỏ chặn' : 'Chặn';
+
+    menuEl.classList.remove('d-none');
+
+    const menuWidth = 230;
+    const menuHeight = 250;
+    const left = Math.min(x, window.innerWidth - menuWidth - 12);
+    const top = Math.min(y, window.innerHeight - menuHeight - 12);
+
+    menuEl.style.left = `${Math.max(8, left)}px`;
+    menuEl.style.top = `${Math.max(8, top)}px`;
+}
+
+function closeContextMenu() {
+    document.getElementById('conversationContextMenu')?.classList.add('d-none');
+    contextMenuTargetConvId = null;
+}
+
+function renderNotifications() {
+    const badgeEl = document.getElementById('notificationBadge');
+    const listEl = document.getElementById('notificationList');
+    if (!badgeEl || !listEl) return;
+
+    const unreadCount = NOTIFICATIONS.filter((n) => n.unread).length;
+    badgeEl.textContent = unreadCount;
+    badgeEl.classList.toggle('d-none', unreadCount === 0);
+
+    if (NOTIFICATIONS.length === 0) {
+        listEl.innerHTML = `<div class="p-4 text-center text-muted small">Chưa có thông báo nào</div>`;
+        return;
+    }
+
+    listEl.innerHTML = NOTIFICATIONS.map(
+        (n) => `
+        <div class="notif-item ${n.unread ? 'unread' : ''}" data-notif-id="${n.id}" data-conv-id="${n.conversationId}">
+            <div class="notif-icon">
+                <i class="fa-brands fa-facebook-messenger"></i>
+            </div>
+            <div class="flex-grow-1 min-w-0">
+                <div class="notif-text">
+                    <strong>${escapeHtml(n.title)}</strong>: ${escapeHtml(n.content)}
+                </div>
+                <div class="notif-time">${escapeHtml(n.time)}</div>
+            </div>
+        </div>
+    `
+    ).join('');
+
+    listEl.querySelectorAll('.notif-item').forEach((item) => {
+        item.addEventListener('click', () => {
+            const notifId = item.getAttribute('data-notif-id');
+            const convId = item.getAttribute('data-conv-id');
+            const notif = NOTIFICATIONS.find((x) => x.id === notifId);
+            if (notif) notif.unread = false;
+
+            renderNotifications();
+            document.getElementById('notificationPopover')?.classList.add('d-none');
+            if (convId) selectConversation(convId);
+        });
+    });
+}
+
+function renderBlockedUsersInSettings() {
+    const blockedConvs = CONVERSATIONS.filter((c) => c.blocked);
+    const countLabel = document.getElementById('blockedCountLabel');
+    const listEl = document.getElementById('blockedUsersList');
+    if (!countLabel || !listEl) return;
+
+    countLabel.textContent = blockedConvs.length;
+
+    if (blockedConvs.length === 0) {
+        listEl.innerHTML = `<div class="small text-secondary py-2">Hiện không có người dùng nào bị chặn.</div>`;
+        return;
+    }
+
+    listEl.innerHTML = blockedConvs
+        .map(
+            (c) => `
+        <div class="blocked-user-row">
+            <span class="fw-semibold">${escapeHtml(getDisplayConversationName(c))}</span>
+            <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2" data-unblock-id="${c.id}">
+                Bỏ chặn
+            </button>
+        </div>
+    `
+        )
+        .join('');
+
+    listEl.querySelectorAll('[data-unblock-id]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const id = btn.getAttribute('data-unblock-id');
+            toggleBlockConversation(id);
+        });
+    });
+}
+
+function appendMessageToConversation(conversationId, messageObj, broadcastToOtherTabs = true) {
+    const conv = getConversationById(conversationId);
+    if (!conv) return;
+
+    conv.messages.push(messageObj);
+
+    const idx = CONVERSATIONS.findIndex((c) => c.id === conversationId);
+    if (idx > 0) {
+        const [moved] = CONVERSATIONS.splice(idx, 1);
+        CONVERSATIONS.unshift(moved);
+    }
+
+    if (activeConversationId === conversationId) {
+        renderMessages(conv);
+    } else {
+        conv.unreadCount = (conv.unreadCount || 0) + 1;
+    }
+
+    if (broadcastToOtherTabs) {
+        persistAndSyncConversations('NEW_MESSAGE', {
+            conversationId: conversationId,
+            message: messageObj
+        });
+    } else {
+        try {
+            localStorage.setItem(STORAGE_KEYS.CONVERSATIONS, JSON.stringify(CONVERSATIONS));
+        } catch (_) {}
+    }
+
+    renderConversationList();
+}
+
+function showTypingIndicator(senderName) {
+    const typingBar = document.getElementById('typingIndicatorBar');
+    const typingText = document.getElementById('typingUserText');
+    if (!typingBar || !typingText) return;
+
+    typingText.textContent = `${senderName} đang soạn tin nhắn...`;
+    typingBar.classList.remove('d-none');
+
+    clearTimeout(typingTimeout);
+    typingTimeout = setTimeout(() => {
+        typingBar.classList.add('d-none');
+    }, 1800);
+}
+
+function startCallSession(type = 'AUDIO') {
+    const conv = getConversationById(activeConversationId);
+    if (!conv) return;
+
+    if (conv.blocked) {
+        showToast('Không thể thực hiện cuộc gọi vì bạn đã chặn tài khoản này.', 'fa-ban');
+        return;
+    }
+
+    const callModal = document.getElementById('callModalBackdrop');
+    const avatarWrap = document.getElementById('callAvatarWrap');
+    const partnerNameEl = document.getElementById('callPartnerName');
+    const statusLabel = document.getElementById('callStatusLabel');
+    const displayName = getDisplayConversationName(conv);
+    const displayAvatar = getDisplayConversationAvatar(conv);
+
+    avatarWrap.innerHTML =
+        conv.type === 'GROUP'
+            ? `<div class="conv-avatar-group mx-auto" style="width:80px;height:80px;font-size:1.5rem;">${escapeHtml(conv.avatarText || 'GR')}</div>`
+            : `<img src="${displayAvatar}" alt="${escapeHtml(displayName)}" class="conv-avatar" style="width:80px;height:80px;">`;
+
+    partnerNameEl.textContent = displayName;
+    statusLabel.textContent =
+        type === 'VIDEO' ? 'Đang gọi video trực tuyến...' : 'Đang đổ chuông gọi thoại...';
+
+    callModal.classList.remove('d-none');
+}
+
+// --------------------------------------------------------------------------
+// 9. TIỆN ÍCH HỖ TRỢ (TOAST, SOUND, HELPERS)
+// --------------------------------------------------------------------------
+
+function syncComposerButtons() {
+    const inputEl = document.getElementById('messageInput');
+    const quickBtn = document.getElementById('btnQuickReactionSend');
+    const sendBtn = document.getElementById('btnSendMessage');
+    if (!inputEl || !quickBtn || !sendBtn) return;
+
+    const hasText = inputEl.value.trim().length > 0;
+    quickBtn.classList.toggle('d-none', hasText);
+    sendBtn.classList.toggle('d-none', !hasText);
+}
+
+function setConversationFilter(filterValue) {
+    currentFilter = filterValue;
+
+    document.querySelectorAll('.conversation-tabs .tab-pill').forEach((b) => {
+        b.classList.toggle('active', b.getAttribute('data-filter') === filterValue);
+    });
+
+    document.querySelectorAll('.messenger-nav-rail [data-rail-filter]').forEach((b) => {
+        b.classList.toggle('active', b.getAttribute('data-rail-filter') === filterValue);
+    });
+
+    const headingEl = document.getElementById('sidebarHeadingTitle');
+    if (headingEl) {
+        if (filterValue === 'archived') headingEl.textContent = 'Kho lưu trữ';
+        else if (filterValue === 'GROUP') headingEl.textContent = 'Nhóm chat';
+        else if (filterValue === 'unread') headingEl.textContent = 'Chưa đọc';
+        else headingEl.textContent = 'Đoạn chat';
+    }
+
+    renderConversationList();
+}
+
+function updateBadgesCount() {
+    const archivedCount = CONVERSATIONS.filter((c) => c.archived).length;
+    const totalUnread = CONVERSATIONS.filter((c) => !c.archived).reduce(
+        (sum, c) => sum + (c.unreadCount || 0),
+        0
+    );
+
+    const archivedBadge = document.getElementById('archivedCountBadge');
+    const railArchivedBadge = document.getElementById('railArchivedBadge');
+    const railUnreadBadge = document.getElementById('railUnreadBadge');
+
+    if (archivedBadge) {
+        archivedBadge.textContent = archivedCount;
+        archivedBadge.classList.toggle('d-none', archivedCount === 0);
+    }
+    if (railArchivedBadge) {
+        railArchivedBadge.textContent = archivedCount;
+        railArchivedBadge.classList.toggle('d-none', archivedCount === 0);
+    }
+    if (railUnreadBadge) {
+        railUnreadBadge.textContent = totalUnread;
+        railUnreadBadge.classList.toggle('d-none', totalUnread === 0);
+    }
+}
+
+function showToast(message, iconClass = 'fa-circle-info') {
+    const container = document.getElementById('toastContainer');
+    if (!container) return;
+
+    const toast = document.createElement('div');
+    toast.className = 'chat-toast';
+    toast.innerHTML = `<i class="fa-solid ${iconClass} text-info"></i><span>${escapeHtml(message)}</span>`;
+    container.appendChild(toast);
+
+    setTimeout(() => {
+        toast.remove();
+    }, 2800);
+}
+
+function playSubtleBeep() {
+    try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(660, ctx.currentTime);
+        gain.gain.setValueAtTime(0.04, ctx.currentTime);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.09);
+    } catch (_) {}
+}
+
+function getConversationById(id) {
+    return CONVERSATIONS.find((c) => c.id === id) || null;
+}
+
+function updateWsStatusUI(state, text) {
+    const dotEl = document.getElementById('wsStatusDot');
+    const textEl = document.getElementById('wsStatusText');
+    if (!dotEl || !textEl) return;
+
+    dotEl.className = 'ws-dot';
+    if (state === 'connected') dotEl.classList.add('connected');
+    textEl.textContent = text;
+}
+
+function formatFullTime(isoString) {
+    const date = new Date(isoString);
+    if (isNaN(date.getTime())) return '';
+    return date.toLocaleTimeString('vi-VN', {
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+}
+
+function formatShortTime(isoString) {
+    const date = new Date(isoString);
+    if (isNaN(date.getTime())) return '';
+    return date.toLocaleTimeString('vi-VN', {
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+}
+
+function escapeHtml(unsafeText) {
+    if (!unsafeText) return '';
+    return String(unsafeText)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+// --------------------------------------------------------------------------
+// 10. KHỞI TẠO SỰ KIỆN KHI TRANG TẢI XONG
+// --------------------------------------------------------------------------
+document.addEventListener('DOMContentLoaded', () => {
+    updateCurrentUserProfileUI();
+    renderSavedAccountsOnAuthScreen();
+    renderActiveNowStrip();
+    renderConversationList();
+    renderNotifications();
+    renderBlockedUsersInSettings();
+    selectConversation(activeConversationId);
+
+    connectWebSocket();
+
+    // Form Đăng nhập bằng Tên & Email thật
+    const loginForm = document.getElementById('loginForm');
+    loginForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const nameVal = document.getElementById('loginNameInput').value.trim();
+        const emailVal = document.getElementById('loginEmailInput').value.trim();
+        if (!nameVal || !emailVal) return;
+
+        // Kiểm tra xem email hoặc tên đã có trong danh bạ chưa
+        const existingUser = CONTACTS_DIRECTORY.find(
+            (u) =>
+                u.email.toLowerCase() === emailVal.toLowerCase() ||
+                u.name.toLowerCase() === nameVal.toLowerCase()
+        );
+
+        if (existingUser) {
+            loginAsUser(existingUser);
+        } else {
+            const newUser = {
+                id: 'user-' + Date.now(),
+                name: nameVal,
+                shortName: nameVal.split(/\s+/).slice(-2).join(' '),
+                email: emailVal,
+                online: true,
+                avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(nameVal)}&background=0084ff&color=fff&bold=true`
+            };
+            loginAsUser(newUser);
+        }
+    });
+
+    // Gửi tin nhắn & phát tín hiệu "Đang soạn tin nhắn..." sang các Tab khác
+    const messageForm = document.getElementById('messageForm');
+    const messageInput = document.getElementById('messageInput');
+
+    messageInput.addEventListener('input', () => {
+        syncComposerButtons();
+        if (realtimeBus && activeConversationId && messageInput.value.trim()) {
+            realtimeBus.postMessage({
+                type: 'USER_TYPING',
+                conversationId: activeConversationId,
+                senderId: CURRENT_USER.id,
+                senderName: CURRENT_USER.name
+            });
+        }
+    });
+
+    messageForm.addEventListener('submit', (event) => {
+        event.preventDefault();
+        const content = messageInput.value;
+        if (!content.trim()) return;
+
+        sendChatMessage(activeConversationId, content);
+        messageInput.value = '';
+        syncComposerButtons();
+        document.getElementById('emojiPickerPopover')?.classList.add('d-none');
+    });
+
+    // Gửi nhanh biểu tượng cảm xúc (👍 / ❤️ / 🔥) khi ô nhập trống
+    document.getElementById('btnQuickReactionSend').addEventListener('click', () => {
+        const conv = getConversationById(activeConversationId);
+        if (!conv) return;
+        sendChatMessage(activeConversationId, conv.quickEmoji || '👍');
+    });
+
+    // Hủy trả lời tin nhắn
+    document.getElementById('btnCancelReply').addEventListener('click', cancelReplyMessage);
+
+    // Tìm kiếm cuộc trò chuyện bên trái
+    const searchInput = document.getElementById('searchConversationInput');
+    const btnClearSearch = document.getElementById('btnClearSearch');
+    searchInput.addEventListener('input', (e) => {
+        searchQuery = e.target.value.trim();
+        btnClearSearch.classList.toggle('d-none', searchQuery.length === 0);
+        renderConversationList();
+    });
+
+    btnClearSearch.addEventListener('click', () => {
+        searchInput.value = '';
+        searchQuery = '';
+        btnClearSearch.classList.add('d-none');
+        renderConversationList();
+    });
+
+    // Tìm kiếm tin nhắn bên trong cuộc trò chuyện hiện tại
+    const inChatBar = document.getElementById('inChatSearchBar');
+    const inChatInput = document.getElementById('inChatSearchInput');
+    document.getElementById('drawerBtnSearchInChat').addEventListener('click', () => {
+        inChatBar.classList.remove('d-none');
+        inChatInput.focus();
+    });
+    document.getElementById('btnCloseInChatSearch').addEventListener('click', () => {
+        inChatInput.value = '';
+        inChatSearchQuery = '';
+        inChatBar.classList.add('d-none');
+        const conv = getConversationById(activeConversationId);
+        if (conv) renderMessages(conv);
+    });
+    inChatInput.addEventListener('input', (e) => {
+        inChatSearchQuery = e.target.value.trim();
+        const conv = getConversationById(activeConversationId);
+        if (conv) renderMessages(conv);
+    });
+
+    // Lọc theo Tab & Thanh Nav Rail bên trái
+    document.querySelectorAll('.conversation-tabs .tab-pill').forEach((tabBtn) => {
+        tabBtn.addEventListener('click', () => {
+            setConversationFilter(tabBtn.getAttribute('data-filter'));
+        });
+    });
+
+    document.querySelectorAll('.messenger-nav-rail [data-rail-filter]').forEach((railBtn) => {
+        railBtn.addEventListener('click', () => {
+            setConversationFilter(railBtn.getAttribute('data-rail-filter'));
+        });
+    });
+
+    // Đổi màu chủ đề (Theme Swatches) & Quick Emoji
+    document.querySelectorAll('#themeColorSwatches .theme-swatch').forEach((swatchBtn) => {
+        swatchBtn.addEventListener('click', () => {
+            changeActiveConversationTheme(swatchBtn.getAttribute('data-theme-color'));
+        });
+    });
+    document.getElementById('drawerBtnChangeQuickEmoji').addEventListener('click', cycleQuickEmoji);
+    document.getElementById('drawerBtnRenameConv').addEventListener('click', renameActiveConversation);
+
+    // Mở Modal Tạo nhóm mới & Thêm thành viên vào nhóm
+    document.getElementById('btnOpenCreateGroup').addEventListener('click', () => openGroupModal('CREATE'));
+    document.getElementById('btnRailCreateGroup').addEventListener('click', () => openGroupModal('CREATE'));
+    document.getElementById('btnEmptyCreateGroup').addEventListener('click', () => openGroupModal('CREATE'));
+    document.getElementById('drawerBtnAddMember').addEventListener('click', () => openGroupModal('ADD_MEMBER'));
+    document.getElementById('btnHeaderAddMember').addEventListener('click', () => openGroupModal('ADD_MEMBER'));
+
+    // Nút Tin nhắn mới (Mở trạng thái chọn cuộc trò chuyện mới)
+    document.getElementById('btnNewMessageCompose').addEventListener('click', () => {
+        selectConversation(null);
+        searchInput.focus();
+    });
+
+    // Sự kiện bên trong Modal Tạo nhóm
+    document.getElementById('btnCloseCreateGroup').addEventListener('click', closeGroupModal);
+    document.getElementById('btnCancelCreateGroup').addEventListener('click', closeGroupModal);
+    document.getElementById('createGroupModalBackdrop').addEventListener('click', (e) => {
+        if (e.target.id === 'createGroupModalBackdrop') closeGroupModal();
+    });
+
+    document.getElementById('groupNameInput').addEventListener('input', (e) => {
+        const avatarInput = document.getElementById('groupAvatarTextInput');
+        if (!avatarInput.dataset.manualEdit) {
+            const initials = e.target.value
+                .trim()
+                .split(/\s+/)
+                .filter(Boolean)
+                .map((w) => w[0])
+                .join('')
+                .substring(0, 3)
+                .toUpperCase();
+            avatarInput.value = initials;
+        }
+    });
+    document.getElementById('groupAvatarTextInput').addEventListener('input', (e) => {
+        e.target.dataset.manualEdit = e.target.value.trim() ? 'true' : '';
+    });
+
+    document.getElementById('searchMemberInput').addEventListener('input', (e) => {
+        memberSearchQuery = e.target.value.trim();
+        renderContactPickerList();
+    });
+    document.getElementById('btnAddCustomContact').addEventListener('click', addCustomContactFromInput);
+    document.getElementById('createGroupForm').addEventListener('submit', handleGroupModalSubmit);
+
+    // Xử lý click các hành động trong Menu ngữ cảnh (...)
+    document.querySelectorAll('#conversationContextMenu .context-menu-item').forEach((item) => {
+        item.addEventListener('click', () => {
+            const action = item.getAttribute('data-action');
+            const targetId = contextMenuTargetConvId;
+            closeContextMenu();
+            if (!targetId) return;
+
+            if (action === 'toggle-unread') toggleUnreadConversation(targetId);
+            if (action === 'toggle-pin') togglePinConversation(targetId);
+            if (action === 'toggle-mute') toggleMuteConversation(targetId);
+            if (action === 'toggle-archive') toggleArchiveConversation(targetId);
+            if (action === 'toggle-block') toggleBlockConversation(targetId);
+            if (action === 'delete-chat') deleteConversation(targetId);
+        });
+    });
+
+    // Các nút trong Ngăn Thông tin bên phải
+    document.getElementById('drawerBtnPin').addEventListener('click', () => {
+        if (activeConversationId) togglePinConversation(activeConversationId);
+    });
+    document.getElementById('drawerBtnMute').addEventListener('click', () => {
+        if (activeConversationId) toggleMuteConversation(activeConversationId);
+    });
+    document.getElementById('drawerBtnArchive').addEventListener('click', () => {
+        if (activeConversationId) toggleArchiveConversation(activeConversationId);
+    });
+    document.getElementById('drawerBtnMarkUnread').addEventListener('click', () => {
+        if (activeConversationId) toggleUnreadConversation(activeConversationId);
+    });
+    document.getElementById('drawerBtnBlock').addEventListener('click', () => {
+        if (activeConversationId) toggleBlockConversation(activeConversationId);
+    });
+    document.getElementById('drawerBtnDelete').addEventListener('click', () => {
+        if (activeConversationId) deleteConversation(activeConversationId);
+    });
+    document.getElementById('btnUnblockFromBanner').addEventListener('click', () => {
+        if (activeConversationId) toggleBlockConversation(activeConversationId);
+    });
+
+    // Ẩn/Hiện ngăn Thông tin bên phải
+    const btnToggleInfoDrawer = document.getElementById('btnToggleInfoDrawer');
+    const chatInfoDrawer = document.getElementById('chatInfoDrawer');
+    btnToggleInfoDrawer.addEventListener('click', () => {
+        chatInfoDrawer.classList.toggle('d-none');
+        btnToggleInfoDrawer.classList.toggle('active');
+    });
+
+    // Gọi thoại & Gọi video
+    document.getElementById('btnAudioCall').addEventListener('click', () => startCallSession('AUDIO'));
+    document.getElementById('btnVideoCall').addEventListener('click', () => startCallSession('VIDEO'));
+    document.getElementById('btnEndCall').addEventListener('click', () => {
+        document.getElementById('callModalBackdrop').classList.add('d-none');
+        showToast('Đã kết thúc cuộc gọi', 'fa-phone-slash');
+    });
+    document.getElementById('btnToggleCallMic').addEventListener('click', (e) => {
+        const icon = e.currentTarget.querySelector('i');
+        icon.classList.toggle('fa-microphone');
+        icon.classList.toggle('fa-microphone-slash');
+    });
+
+    // Trung tâm Thông báo
+    const notifPopover = document.getElementById('notificationPopover');
+    document.getElementById('btnNotifications').addEventListener('click', (e) => {
+        e.stopPropagation();
+        notifPopover.classList.toggle('d-none');
+    });
+
+    document.getElementById('btnMarkAllNotifRead').addEventListener('click', () => {
+        NOTIFICATIONS.forEach((n) => (n.unread = false));
+        renderNotifications();
+        showToast('Đã đánh dấu tất cả thông báo là đã đọc', 'fa-check-double');
+    });
+
+    // Chuyển nhanh Dark Mode
+    const toggleDarkModeSwitch = document.getElementById('toggleDarkMode');
+    const applyDarkMode = (enabled) => {
+        USER_SETTINGS.darkMode = enabled;
+        document.body.classList.toggle('dark-mode', enabled);
+        if (toggleDarkModeSwitch) toggleDarkModeSwitch.checked = enabled;
+    };
+
+    document.getElementById('btnQuickDarkMode').addEventListener('click', () => {
+        applyDarkMode(!USER_SETTINGS.darkMode);
+        showToast(
+            USER_SETTINGS.darkMode ? 'Đã bật Chế độ tối Messenger' : 'Đã chuyển về Chế độ sáng',
+            'fa-moon'
+        );
+    });
+
+    toggleDarkModeSwitch.addEventListener('change', (e) => {
+        applyDarkMode(e.target.checked);
+    });
+
+    // Mở / Đóng Modal Cài đặt
+    const settingsModal = document.getElementById('settingsModalBackdrop');
+    document.getElementById('btnOpenSettings').addEventListener('click', () => {
+        renderBlockedUsersInSettings();
+        settingsModal.classList.remove('d-none');
+    });
+    document.getElementById('btnCloseSettings').addEventListener('click', () => {
+        settingsModal.classList.add('d-none');
+    });
+    settingsModal.addEventListener('click', (e) => {
+        if (e.target === settingsModal) settingsModal.classList.add('d-none');
+    });
+
+    document.getElementById('toggleActiveStatus').addEventListener('change', (e) => {
+        USER_SETTINGS.activeStatus = e.target.checked;
+        document
+            .getElementById('myActiveStatusDot')
+            .classList.toggle('online', USER_SETTINGS.activeStatus);
+        showToast(
+            USER_SETTINGS.activeStatus
+                ? 'Đã bật hiển thị Trạng thái hoạt động'
+                : 'Đã ẩn Trạng thái hoạt động',
+            'fa-user-check'
+        );
+    });
+
+    document.getElementById('toggleDesktopNotif').addEventListener('change', (e) => {
+        USER_SETTINGS.desktopNotif = e.target.checked;
+    });
+
+    document.getElementById('toggleSoundNotif').addEventListener('change', (e) => {
+        USER_SETTINGS.soundNotif = e.target.checked;
+    });
+
+    // Mobile Back
+    document.getElementById('btnBackToSidebar').addEventListener('click', () => {
+        document.getElementById('appContainer').classList.remove('mobile-chat-active');
+    });
+
+    // Mở màn hình Đăng nhập / Đổi tài khoản
+    const authScreen = document.getElementById('authScreen');
+    const openAuthScreen = () => {
+        renderSavedAccountsOnAuthScreen();
+        document.getElementById('loginNameInput').value = CURRENT_USER.name;
+        document.getElementById('loginEmailInput').value = CURRENT_USER.email;
+        authScreen.classList.remove('d-none');
+    };
+    document.getElementById('btnSwitchAccount').addEventListener('click', openAuthScreen);
+    document.getElementById('btnLogoutFromSettings').addEventListener('click', openAuthScreen);
+
+    // Chọn Emoji
+    const emojiPopover = document.getElementById('emojiPickerPopover');
+    document.getElementById('btnToggleEmoji').addEventListener('click', (e) => {
+        e.stopPropagation();
+        emojiPopover.classList.toggle('d-none');
+    });
+    document.querySelectorAll('.emoji-item').forEach((emojiBtn) => {
+        emojiBtn.addEventListener('click', () => {
+            messageInput.value += emojiBtn.textContent;
+            syncComposerButtons();
+            messageInput.focus();
+        });
+    });
+
+    // Gửi hình ảnh thật vào khung chat
+    const imageInput = document.getElementById('imageAttachmentInput');
+    document.getElementById('btnSendImage').addEventListener('click', () => {
+        imageInput.click();
+    });
+    imageInput.addEventListener('change', (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+            const conv = getConversationById(activeConversationId);
+            if (conv) {
+                conv.sharedFiles = conv.sharedFiles || [];
+                conv.sharedFiles.unshift(file.name);
+                updateActiveChatHeaderAndDrawer(conv);
+            }
+            sendChatMessage(activeConversationId, '', { imageUrl: ev.target.result });
+        };
+        reader.readAsDataURL(file);
+        imageInput.value = '';
+    });
+
+    // Đính kèm tệp tài liệu
+    const fileInput = document.getElementById('fileAttachmentInput');
+    document.getElementById('btnAttachFile').addEventListener('click', () => {
+        fileInput.click();
+    });
+    fileInput.addEventListener('change', (e) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            const conv = getConversationById(activeConversationId);
+            if (conv) {
+                conv.sharedFiles = conv.sharedFiles || [];
+                conv.sharedFiles.unshift(file.name);
+                updateActiveChatHeaderAndDrawer(conv);
+            }
+            sendChatMessage(activeConversationId, `📎 Đã gửi tệp đính kèm: ${file.name}`);
+            fileInput.value = '';
+        }
+    });
+
+    // Đóng các menu/popover khi click ra ngoài
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('#conversationContextMenu')) {
+            closeContextMenu();
+        }
+        if (!e.target.closest('#notificationPopover') && !e.target.closest('#btnNotifications')) {
+            notifPopover.classList.add('d-none');
+        }
+        if (!e.target.closest('#emojiPickerPopover') && !e.target.closest('#btnToggleEmoji')) {
+            emojiPopover.classList.add('d-none');
+        }
+    });
+});
