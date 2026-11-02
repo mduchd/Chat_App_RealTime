@@ -1,0 +1,268 @@
+/* ==========================================================================
+   ChatSpace Messenger — Authentic Messenger Web + Minimalist SaaS Stylesheet
+   Đề tài: Chat Realtime bằng WebSocket với Spring Boot
+   ========================================================================== */
+
+:root {
+    /* Màu chủ đề động của cuộc trò chuyện (mặc định Xanh Messenger #0084ff) */
+    --theme-color: #0084ff;
+    --theme-gradient: linear-gradient(135deg, #0084ff 0%, #0062ff 100%);
+
+    /* Bảng màu Messenger Light Mode & Minimalist SaaS */
+    --rail-bg: #f8fafc;
+    --sidebar-bg: #f8fafc;
+    --sidebar-hover: #f0f2f5;
+    --sidebar-active: #ebf5ff;
+    --chat-bg: #ffffff;
+    --surface-elevated: #ffffff;
+    --input-pill-bg: #f0f2f5;
+    --border-color: #e4e6eb;
+    --border-subtle: #f0f2f5;
+
+    /* Màu nhấn */
+    --primary: #0084ff;
+    --primary-bright: var(--theme-color);
+    --accent-purple: #6366f1;
+
+    /* Màu bong bóng tin nhắn */
+    --bubble-sent-gradient: var(--theme-gradient);
+    --bubble-sent-text: #ffffff;
+    --bubble-received-bg: #f0f2f5;
+    --bubble-received-text: #050505;
+
+    /* Typography & Text */
+    --text-primary: #050505;
+    --text-secondary: #65676b;
+    --text-muted: #8a8d91;
+
+    /* Status & Badges */
+    --status-online: #31a24c;
+    --status-offline: #cbd5e1;
+    --badge-unread-bg: linear-gradient(135deg, #0084ff 0%, #ef4444 100%);
+
+    /* Shadows */
+    --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.05);
+    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.08);
+    --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.12);
+    --shadow-lg: 0 16px 36px rgba(0, 0, 0, 0.16);
+}
+
+/* Chế độ tối (Dark Mode chuẩn Messenger) */
+body.dark-mode {
+    --rail-bg: #18191a;
+    --sidebar-bg: #18191a;
+    --sidebar-hover: #242526;
+    --sidebar-active: #263951;
+    --chat-bg: #18191a;
+    --surface-elevated: #242526;
+    --input-pill-bg: #3a3b3c;
+    --border-color: #2f3031;
+    --border-subtle: #2f3031;
+    --bubble-received-bg: #303030;
+    --bubble-received-text: #e4e6eb;
+    --text-primary: #e4e6eb;
+    --text-secondary: #b0b3b8;
+    --text-muted: #8a8d91;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html, body {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background-color: var(--chat-bg);
+    color: var(--text-primary);
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+    transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+/* ==========================================================================
+   1. MÀN HÌNH ĐĂNG NHẬP GOOGLE OAUTH2 (AUTH STATE)
+   ========================================================================== */
+.auth-screen {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+    background:
+        radial-gradient(circle at 15% 20%, rgba(0, 132, 255, 0.1) 0%, transparent 45%),
+        radial-gradient(circle at 85% 80%, rgba(124, 58, 237, 0.1) 0%, transparent 45%),
+        var(--sidebar-bg);
+}
+
+.auth-card {
+    width: 100%;
+    max-width: 430px;
+    background: var(--surface-elevated);
+    border: 1px solid var(--border-color);
+    border-radius: 22px;
+    padding: 2.5rem 2.25rem;
+    box-shadow: var(--shadow-lg);
+    text-align: center;
+    animation: fadeInScale 0.25s ease-out;
+}
+
+.brand-logo-lg {
+    width: 60px;
+    height: 60px;
+    margin: 0 auto 1rem;
+    border-radius: 18px;
+    background: linear-gradient(135deg, #0084ff 0%, #a033ff 55%, #ff5280 100%);
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.85rem;
+    box-shadow: 0 8px 20px rgba(0, 132, 255, 0.3);
+}
+
+.badge-saas {
+    display: inline-block;
+    padding: 0.25rem 0.75rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: #0084ff;
+    background: rgba(0, 132, 255, 0.1);
+    border: 1px solid rgba(0, 132, 255, 0.25);
+    border-radius: 999px;
+    margin-bottom: 0.85rem;
+}
+
+.auth-title {
+    font-size: 1.55rem;
+    font-weight: 800;
+    color: var(--text-primary);
+    margin-bottom: 0.5rem;
+    letter-spacing: -0.02em;
+}
+
+.auth-title span {
+    background: linear-gradient(90deg, #0084ff, #a033ff, #ff5280);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.auth-subtitle {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    line-height: 1.55;
+    margin-bottom: 1.75rem;
+}
+
+.btn-google-oauth {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    width: 100%;
+    padding: 0.8rem 1.25rem;
+    background-color: #ffffff;
+    color: #0f172a;
+    border: 1px solid #cbd5e1;
+    border-radius: 999px;
+    font-size: 0.925rem;
+    font-weight: 600;
+    text-decoration: none;
+    transition: all 0.2s ease;
+    box-shadow: var(--shadow-xs);
+}
+
+.btn-google-oauth:hover {
+    background-color: #f8fafc;
+    border-color: #94a3b8;
+    box-shadow: var(--shadow-sm);
+    transform: translateY(-1px);
+    color: #0f172a;
+}
+
+.auth-divider {
+    position: relative;
+    margin: 1.35rem 0;
+    text-align: center;
+}
+
+.auth-divider::before {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: var(--border-color);
+}
+
+.auth-divider span {
+    position: relative;
+    background: var(--surface-elevated);
+    padding: 0 0.75rem;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.btn-demo-login,
+.btn-primary-auth {
+    width: 100%;
+    padding: 0.78rem 1.25rem;
+    background: linear-gradient(135deg, #0084ff 0%, #0062ff 100%);
+    color: #ffffff;
+    border: none;
+    border-radius: 999px;
+    font-size: 0.92rem;
+    font-weight: 600;
+    transition: all 0.2s ease;
+}
+
+.btn-demo-login:hover,
+.btn-primary-auth:hover {
+    filter: brightness(1.06);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(0, 132, 255, 0.3);
+}
+
+.auth-input {
+    border-radius: 12px;
+    padding: 0.62rem 0.9rem;
+    font-size: 0.9rem;
+    border: 1px solid var(--border-color);
+    background-color: var(--sidebar-bg);
+    color: var(--text-primary);
+}
+
+.auth-input:focus {
+    background-color: var(--surface-elevated);
+    color: var(--text-primary);
+    border-color: var(--primary-bright);
+    box-shadow: 0 0 0 3px rgba(0, 132, 255, 0.14);
+}
+
+.saved-account-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.32rem 0.65rem 0.32rem 0.35rem;
+    border-radius: 999px;
+    border: 1px solid var(--border-color);
+    background: var(--sidebar-bg);
+    color: var(--text-primary);
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.saved-account-chip:hover {
+    border-color: var(--primary-bright);
+    background: rgba(0, 132, 255, 0.08);
+}
