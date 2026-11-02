@@ -468,3 +468,428 @@ function subscribeToRoomTopic(roomId) {
     }
 
     const destination = `/topic/room/${roomId}`;
+    currentRoomSubscription = stompClient.subscribe(destination, function (messageFrame) {
+        const incomingMessage = JSON.parse(messageFrame.body);
+        handleIncomingSocketMessage(incomingMessage);
+    });
+}
+
+/**
+ * Hàm gửi tin nhắn qua WebSocket STOMP tới `/app/chat.send`
+ * kèm payload JSON gồm: { conversationId, content, timestamp }
+ */
+function sendChatMessage(conversationId, content, extraOptions = {}) {
+    const trimmedContent = content.trim();
+    if (!trimmedContent && !extraOptions.imageUrl) {
+        return;
+    }
+
+    const conv = getConversationById(conversationId);
+    if (!conv) return;
+
+    if (conv.blocked) {
+        showToast('Không thể gửi tin nhắn vì bạn đã chặn cuộc trò chuyện này.', 'fa-ban');
+        return;
+    }
+
+    const payload = {
+        conversationId: conversationId,
+        senderId: CURRENT_USER.id,
+        senderName: CURRENT_USER.name,
+        senderAvatar: CURRENT_USER.avatar,
+        content: trimmedContent || '📷 Đã gửi một hình ảnh',
+        timestamp: new Date().toISOString()
+    };
+
+    // Gửi tới Backend Spring Boot qua STOMP nếu `/ws` đang mở
+    if (stompClient && isWsConnected) {
+        stompClient.send('/app/chat.send', {}, JSON.stringify(payload));
+    }
+
+    const newMsg = {
+        id: 'msg-' + Date.now(),
+        senderId: CURRENT_USER.id,
+        senderName: CURRENT_USER.name,
+        senderAvatar: CURRENT_USER.avatar,
+        content: trimmedContent,
+        imageUrl: extraOptions.imageUrl || null,
+        replyTo: replyingToMessage
+            ? {
+                  senderName: replyingToMessage.senderName,
+                  content: replyingToMessage.content
+              }
+            : null,
+        timestamp: payload.timestamp
+    };
+
+    cancelReplyMessage();
+    appendMessageToConversation(conversationId, newMsg, true);
+    syncComposerButtons();
+}
+
+/**
+ * Xử lý khi nhận được gói tin JSON từ `/user/queue/messages` hoặc `/topic/room/{roomId}`
+ */
+function handleIncomingSocketMessage(payload) {
+    if (!payload || !payload.content) {
+        return;
+    }
+
+    const targetConvId = payload.conversationId || activeConversationId;
+    const conv = getConversationById(targetConvId);
+
+    if (conv && conv.blocked) {
+        return;
+    }
+
+    if (payload.senderId === CURRENT_USER.id) {
+        return;
+    }
+
+    const msgObj = {
+        id: payload.id || 'ws-' + Date.now(),
+        senderId: payload.senderId || 'partner',
+        senderName: payload.senderName || 'Thành viên',
+        senderAvatar:
+            payload.senderAvatar || 'https://ui-avatars.com/api/?name=User&background=0ea5e9&color=fff',
+        content: payload.content,
+        timestamp: payload.timestamp || new Date().toISOString()
+    };
+
+    appendMessageToConversation(targetConvId, msgObj, false);
+
+    if (conv && !conv.muted && USER_SETTINGS.desktopNotif) {
+        NOTIFICATIONS.unshift({
+            id: 'notif-' + Date.now(),
+            conversationId: conv.id,
+            title: getDisplayConversationName(conv),
+            content: `${msgObj.senderName}: ${msgObj.content}`,
+            time: 'Vừa xong',
+            unread: true
+        });
+        renderNotifications();
+        if (USER_SETTINGS.soundNotif) {
+            playSubtleBeep();
+        }
+    }
+}
+
+// --------------------------------------------------------------------------
+// 3. ĐĂNG NHẬP TÀI KHOẢN THỰC TẾ (HỖ TRỢ ĐA TAB)
+// --------------------------------------------------------------------------
+
+function updateCurrentUserProfileUI() {
+    const railAvatar = document.getElementById('railCurrentUserAvatar');
+    const settingsAvatar = document.getElementById('settingsUserAvatar');
+    const settingsName = document.getElementById('settingsUserName');
+    const settingsEmail = document.getElementById('settingsUserEmail');
+
+    if (railAvatar) railAvatar.src = CURRENT_USER.avatar;
+    if (settingsAvatar) settingsAvatar.src = CURRENT_USER.avatar;
+    if (settingsName) settingsName.textContent = CURRENT_USER.name;
+    if (settingsEmail) settingsEmail.textContent = CURRENT_USER.email;
+
+    document.title = `${CURRENT_USER.name} — ChatSpace Messenger`;
+}
+
+function renderSavedAccountsOnAuthScreen() {
+    const container = document.getElementById('savedAccountsList');
+    if (!container) return;
+
+    container.innerHTML = CONTACTS_DIRECTORY.map(
+        (acc) => `
+        <button type="button" class="saved-account-chip" data-switch-user-id="${acc.id}">
+            <img src="${acc.avatar}" alt="${escapeHtml(acc.name)}">
+            <span>${escapeHtml(acc.name)}</span>
+        </button>
+    `
+    ).join('');
+
+    container.querySelectorAll('[data-switch-user-id]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const userId = btn.getAttribute('data-switch-user-id');
+            const found = CONTACTS_DIRECTORY.find((u) => u.id === userId);
+            if (found) {
+                loginAsUser(found);
+            }
+        });
+    });
+}
+
+function loginAsUser(userObj) {
+    CURRENT_USER = {
+        id: userObj.id,
+        name: userObj.name,
+        shortName: userObj.shortName || userObj.name.split(/\s+/).slice(-2).join(' '),
+        email: userObj.email,
+        online: true,
+        avatar: userObj.avatar
+    };
+
+    saveTabUser(CURRENT_USER);
+
+    // Đảm bảo tài khoản này có mặt trong CONTACTS_DIRECTORY chung
+    const existingIdx = CONTACTS_DIRECTORY.findIndex(
+        (c) => c.id === CURRENT_USER.id || c.email.toLowerCase() === CURRENT_USER.email.toLowerCase()
+    );
+    if (existingIdx === -1) {
+        CONTACTS_DIRECTORY.unshift({ ...CURRENT_USER });
+    } else {
+        CONTACTS_DIRECTORY[existingIdx].online = true;
+    }
+    saveContactsDirectory();
+
+    updateCurrentUserProfileUI();
+    renderActiveNowStrip();
+    renderConversationList();
+
+    const activeConv = getConversationById(activeConversationId);
+    if (activeConv) {
+        updateActiveChatHeaderAndDrawer(activeConv);
+        renderMessages(activeConv);
+    }
+
+    document.getElementById('authScreen')?.classList.add('d-none');
+    document.getElementById('settingsModalBackdrop')?.classList.add('d-none');
+    showToast(`Xin chào, ${CURRENT_USER.name}!`, 'fa-circle-check');
+}
+
+// --------------------------------------------------------------------------
+// 4. TƯƠNG TÁC TRÊN TỪNG TIN NHẮN (REACTIONS, REPLY, THU HỒI TIN NHẮN)
+// --------------------------------------------------------------------------
+
+function toggleMessageReaction(messageId, emoji) {
+    const conv = getConversationById(activeConversationId);
+    if (!conv) return;
+
+    const msg = conv.messages.find((m) => m.id === messageId);
+    if (!msg || msg.unsent) return;
+
+    msg.reaction = msg.reaction === emoji ? null : emoji;
+    persistAndSyncConversations('REACTION_UPDATED');
+    renderMessages(conv);
+}
+
+function startReplyToMessage(messageId) {
+    const conv = getConversationById(activeConversationId);
+    if (!conv) return;
+
+    const msg = conv.messages.find((m) => m.id === messageId);
+    if (!msg || msg.unsent) return;
+
+    replyingToMessage = msg;
+    document.getElementById('replyTargetSender').textContent =
+        msg.senderId === CURRENT_USER.id ? 'chính bạn' : msg.senderName;
+    document.getElementById('replyTargetText').textContent = msg.content || 'Hình ảnh đính kèm';
+    document.getElementById('replyPreviewBanner').classList.remove('d-none');
+    document.getElementById('messageInput')?.focus();
+}
+
+function cancelReplyMessage() {
+    replyingToMessage = null;
+    document.getElementById('replyPreviewBanner')?.classList.add('d-none');
+}
+
+function unsendMessage(messageId) {
+    const conv = getConversationById(activeConversationId);
+    if (!conv) return;
+
+    const msg = conv.messages.find((m) => m.id === messageId);
+    if (!msg) return;
+
+    msg.unsent = true;
+    msg.content = `${msg.senderName} đã thu hồi một tin nhắn`;
+    msg.imageUrl = null;
+    msg.reaction = null;
+
+    persistAndSyncConversations('MESSAGE_UNSENT');
+    renderMessages(conv);
+    renderConversationList();
+    showToast('Đã thu hồi tin nhắn', 'fa-rotate-left');
+}
+
+// --------------------------------------------------------------------------
+// 5. TÙY CHỈNH ĐOẠN CHAT (ĐỔI MÀU CHỦ ĐỀ, ĐỔI QUICK EMOJI, ĐỔI TÊN)
+// --------------------------------------------------------------------------
+
+function applyConversationTheme(colorHex) {
+    const conv = getConversationById(activeConversationId);
+    const themeColor = colorHex || conv?.themeColor || '#0084ff';
+    const gradient = THEME_PRESETS[themeColor] || THEME_PRESETS['#0084ff'];
+
+    document.documentElement.style.setProperty('--theme-color', themeColor);
+    document.documentElement.style.setProperty('--theme-gradient', gradient);
+
+    document.querySelectorAll('#themeColorSwatches .theme-swatch').forEach((btn) => {
+        btn.classList.toggle('active', btn.getAttribute('data-theme-color') === themeColor);
+    });
+}
+
+function changeActiveConversationTheme(colorHex) {
+    const conv = getConversationById(activeConversationId);
+    if (!conv) return;
+
+    conv.themeColor = colorHex;
+    applyConversationTheme(colorHex);
+    persistAndSyncConversations('THEME_UPDATED');
+    showToast('Đã đổi màu chủ đề cuộc trò chuyện!', 'fa-palette');
+}
+
+function cycleQuickEmoji() {
+    const conv = getConversationById(activeConversationId);
+    if (!conv) return;
+
+    const currentIdx = QUICK_EMOJI_CYCLE.indexOf(conv.quickEmoji || '👍');
+    const nextEmoji = QUICK_EMOJI_CYCLE[(currentIdx + 1) % QUICK_EMOJI_CYCLE.length];
+    conv.quickEmoji = nextEmoji;
+
+    persistAndSyncConversations('EMOJI_UPDATED');
+    updateActiveChatHeaderAndDrawer(conv);
+    showToast(`Đã đổi biểu tượng cảm xúc nhanh thành ${nextEmoji}`, 'fa-face-smile');
+}
+
+function renameActiveConversation() {
+    const conv = getConversationById(activeConversationId);
+    if (!conv) return;
+
+    const label =
+        conv.type === 'GROUP' ? 'Nhập tên mới cho nhóm chat:' : 'Đặt biệt danh cho cuộc trò chuyện:';
+    const newName = window.prompt(label, getDisplayConversationName(conv));
+    if (!newName || !newName.trim()) return;
+
+    conv.name = newName.trim();
+    persistAndSyncConversations('RENAME_CONV');
+    updateActiveChatHeaderAndDrawer(conv);
+    renderConversationList();
+    showToast(`Đã đổi tên thành "${conv.name}"`, 'fa-pen');
+}
+
+// --------------------------------------------------------------------------
+// 6. CHỨC NĂNG TẠO NHÓM CHAT MỚI & QUẢN LÝ THÀNH VIÊN NHÓM
+// --------------------------------------------------------------------------
+
+function openGroupModal(mode = 'CREATE') {
+    groupModalMode = mode;
+    selectedMemberIds = new Set();
+    memberSearchQuery = '';
+
+    const modalBackdrop = document.getElementById('createGroupModalBackdrop');
+    const modalTitle = document.getElementById('groupModalTitle');
+    const identityFields = document.getElementById('groupIdentityFields');
+    const submitText = document.getElementById('btnSubmitGroupText');
+    const groupNameInput = document.getElementById('groupNameInput');
+    const groupAvatarTextInput = document.getElementById('groupAvatarTextInput');
+    const groupTopicDescInput = document.getElementById('groupTopicDescInput');
+    const searchMemberInput = document.getElementById('searchMemberInput');
+
+    if (searchMemberInput) searchMemberInput.value = '';
+
+    if (mode === 'CREATE') {
+        modalTitle.textContent = 'Tạo nhóm chat mới';
+        identityFields.classList.remove('d-none');
+        submitText.textContent = 'Tạo nhóm';
+        groupNameInput.value = '';
+        groupAvatarTextInput.value = '';
+        groupTopicDescInput.value = '';
+    } else {
+        const activeConv = getConversationById(activeConversationId);
+        modalTitle.textContent = `Thêm thành viên vào "${activeConv ? activeConv.name : 'Nhóm'}"`;
+        identityFields.classList.add('d-none');
+        submitText.textContent = 'Thêm vào nhóm';
+    }
+
+    renderSelectedMemberChips();
+    renderContactPickerList();
+    modalBackdrop.classList.remove('d-none');
+
+    if (mode === 'CREATE') {
+        groupNameInput.focus();
+    } else {
+        searchMemberInput.focus();
+    }
+}
+
+function closeGroupModal() {
+    document.getElementById('createGroupModalBackdrop')?.classList.add('d-none');
+}
+
+function renderSelectedMemberChips() {
+    const chipsContainer = document.getElementById('selectedMemberChips');
+    const countBadge = document.getElementById('selectedMemberCountBadge');
+    if (!chipsContainer || !countBadge) return;
+
+    const selectedContacts = CONTACTS_DIRECTORY.filter((c) => selectedMemberIds.has(c.id));
+    countBadge.textContent = selectedContacts.length;
+
+    if (selectedContacts.length === 0) {
+        chipsContainer.innerHTML = `<span class="text-muted small fst-italic">Chưa chọn thành viên nào...</span>`;
+        return;
+    }
+
+    chipsContainer.innerHTML = selectedContacts
+        .map(
+            (c) => `
+        <span class="member-chip">
+            <span>${escapeHtml(c.name)}</span>
+            <button type="button" data-remove-chip-id="${c.id}" title="Bỏ chọn">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </span>
+    `
+        )
+        .join('');
+
+    chipsContainer.querySelectorAll('[data-remove-chip-id]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const id = btn.getAttribute('data-remove-chip-id');
+            selectedMemberIds.delete(id);
+            renderSelectedMemberChips();
+            renderContactPickerList();
+        });
+    });
+}
+
+function renderContactPickerList() {
+    const listEl = document.getElementById('contactPickerList');
+    if (!listEl) return;
+
+    const activeConv = getConversationById(activeConversationId);
+    const existingMemberIds = new Set(
+        groupModalMode === 'ADD_MEMBER' && activeConv?.members
+            ? activeConv.members.map((m) => m.id)
+            : []
+    );
+
+    const filteredContacts = CONTACTS_DIRECTORY.filter((c) => {
+        if (c.id === CURRENT_USER.id) return false;
+        if (!memberSearchQuery) return true;
+        const q = memberSearchQuery.toLowerCase();
+        return c.name.toLowerCase().includes(q) || c.email.toLowerCase().includes(q);
+    });
+
+    if (filteredContacts.length === 0) {
+        listEl.innerHTML = `
+            <div class="text-center text-muted small py-3">
+                Không tìm thấy trong danh bạ. Nhấn nút <strong>"+ Thêm người"</strong> ở trên để thêm trực tiếp!
+            </div>
+        `;
+        return;
+    }
+
+    listEl.innerHTML = filteredContacts
+        .map((c) => {
+            const isAlreadyInGroup = existingMemberIds.has(c.id);
+            const isSelected = selectedMemberIds.has(c.id) || isAlreadyInGroup;
+
+            return `
+            <div class="contact-picker-item ${isSelected ? 'selected' : ''}" data-pick-contact-id="${c.id}" data-already="${isAlreadyInGroup}">
+                <div class="d-flex align-items-center gap-2 min-w-0">
+                    <img src="${c.avatar}" alt="${escapeHtml(c.name)}" class="drawer-member-avatar">
+                    <div class="min-w-0">
+                        <div class="drawer-member-name text-truncate">${escapeHtml(c.name)}</div>
+                        <div class="drawer-member-role text-truncate">${escapeHtml(c.email)}</div>
+                    </div>
+                </div>
+                <div>
+                    ${
+                        isAlreadyInGroup
