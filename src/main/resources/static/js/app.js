@@ -293,6 +293,7 @@ let friendSearchFilter = '';
 // Biến quản lý trạng thái giao diện & STOMP
 let stompClient = null;
 let isWsConnected = false;
+let reconnectTimer = null;
 let currentRoomSubscription = null;
 let activeConversationId = CONVERSATIONS[0]?.id || null;
 let contextMenuTargetConvId = null;
@@ -349,13 +350,18 @@ function saveContactsDirectory() {
 
 function loadConversations() {
     try {
-        const raw = localStorage.getItem(STORAGE_KEYS.CONVERSATIONS);
+        const raw = localStorage.getItem(conversationStorageKey());
         if (raw) {
             const parsed = JSON.parse(raw);
-            if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+            if (Array.isArray(parsed)) return parsed;
         }
     } catch (_) { }
-    return JSON.parse(JSON.stringify(INITIAL_CONVERSATIONS));
+    return JSON.parse(JSON.stringify(INITIAL_CONVERSATIONS.filter(conv =>
+        conv.type !== 'DIRECT' || conv.participants?.includes(CURRENT_USER.id))));
+}
+
+function conversationStorageKey() {
+    return `${STORAGE_KEYS.CONVERSATIONS}:${CURRENT_USER.id}`;
 }
 
 function loadFriendships() {
@@ -387,7 +393,7 @@ function saveAndSyncFriendships(eventType = 'FRIENDS_UPDATED', extraData = {}) {
 
 function persistAndSyncConversations(eventType = 'SYNC_STATE', extraData = {}) {
     try {
-        localStorage.setItem(STORAGE_KEYS.CONVERSATIONS, JSON.stringify(CONVERSATIONS));
+        localStorage.setItem(conversationStorageKey(), JSON.stringify(CONVERSATIONS));
     } catch (_) { }
 
     if (realtimeBus) {
@@ -491,16 +497,24 @@ if (realtimeBus) {
  * và đăng ký lắng nghe kênh cá nhân `/user/queue/messages`
  */
 function connectWebSocket() {
-    updateWsStatusUI('connected', 'Đang hoạt động • Trực tuyến');
+    clearTimeout(reconnectTimer);
+    const previousClient = stompClient;
+    stompClient = null;
+    isWsConnected = false;
+    currentRoomSubscription = null;
+    if (previousClient?.connected) previousClient.disconnect();
+    updateWsStatusUI('disconnected', 'Đang kết nối...');
 
     try {
-        const socket = new SockJS('/ws');
-        stompClient = Stomp.over(socket);
-        stompClient.debug = null;
+        const socket = new SockJS(`/ws-sockjs?user=${encodeURIComponent(CURRENT_USER.id)}`);
+        const client = Stomp.over(socket);
+        stompClient = client;
+        client.debug = null;
 
-        stompClient.connect(
+        client.connect(
             {},
             function onConnected() {
+                if (client !== stompClient) { client.disconnect(); return; }
                 isWsConnected = true;
                 updateWsStatusUI('connected', 'Đã kết nối máy chủ • Trực tuyến');
 
@@ -517,13 +531,16 @@ function connectWebSocket() {
                 }
             },
             function onError() {
+                if (client !== stompClient) return;
                 isWsConnected = false;
-                updateWsStatusUI('connected', 'Đang hoạt động • Trực tuyến');
+                updateWsStatusUI('disconnected', 'Mất kết nối • Đang thử lại');
+                reconnectTimer = setTimeout(connectWebSocket, 3000);
             }
         );
     } catch (error) {
         isWsConnected = false;
-        updateWsStatusUI('connected', 'Đang hoạt động • Trực tuyến');
+        updateWsStatusUI('disconnected', 'Không thể kết nối • Đang thử lại');
+        reconnectTimer = setTimeout(connectWebSocket, 3000);
     }
 }
 
@@ -562,7 +579,22 @@ function sendChatMessage(conversationId, content, extraOptions = {}) {
 
     if (conv.blocked) {
         showToast('Không thể gửi tin nhắn vì bạn đã chặn cuộc trò chuyện này.', 'fa-ban');
-        return;
+        return false;
+    }
+
+    if (conv.type === 'DIRECT' && !extraOptions.imageUrl) {
+        const recipient = conv.participants?.find(id => id !== CURRENT_USER.id);
+        if (!recipient) {
+            showToast('Không xác định được người nhận.', 'fa-triangle-exclamation');
+            return false;
+        }
+        if (!stompClient || !isWsConnected) {
+            showToast('Chưa kết nối máy chủ. Hãy thử lại sau.', 'fa-triangle-exclamation');
+            return false;
+        }
+        stompClient.send('/app/chat.private', {}, JSON.stringify({ recipient, content: trimmedContent }));
+        cancelReplyMessage();
+        return true;
     }
 
     const payload = {
@@ -575,9 +607,6 @@ function sendChatMessage(conversationId, content, extraOptions = {}) {
     };
 
     // Gửi tới Backend Spring Boot qua STOMP nếu `/ws` đang mở
-    if (stompClient && isWsConnected) {
-        stompClient.send('/app/chat.send', {}, JSON.stringify(payload));
-    }
 
     const newMsg = {
         id: 'msg-' + Date.now(),
@@ -598,6 +627,7 @@ function sendChatMessage(conversationId, content, extraOptions = {}) {
     cancelReplyMessage();
     appendMessageToConversation(conversationId, newMsg, true);
     syncComposerButtons();
+    return true;
 }
 
 /**
@@ -605,6 +635,38 @@ function sendChatMessage(conversationId, content, extraOptions = {}) {
  */
 function handleIncomingSocketMessage(payload) {
     if (!payload || !payload.content) {
+        return;
+    }
+
+    if (payload.sender && payload.recipient) {
+        if (payload.sender !== CURRENT_USER.id && payload.recipient !== CURRENT_USER.id) return;
+        const partnerId = payload.sender === CURRENT_USER.id ? payload.recipient : payload.sender;
+        const contact = CONTACTS_DIRECTORY.find(c => c.id === partnerId) || {
+            id: partnerId, name: partnerId, avatar: ''
+        };
+        let direct = CONVERSATIONS.find(c => c.type === 'DIRECT' &&
+            c.participants?.includes(CURRENT_USER.id) && c.participants.includes(partnerId));
+        if (!direct) {
+            direct = {
+                id: 'conv-' + [CURRENT_USER.id, partnerId].sort().join('-'),
+                contactId: partnerId, participants: [CURRENT_USER.id, partnerId],
+                name: contact.name, type: 'DIRECT', roomId: null, online: false,
+                statusText: '', unreadCount: 0, pinned: false, muted: false,
+                archived: false, blocked: false, themeColor: '#0084ff',
+                quickEmoji: '👍', sharedFiles: [], avatar: contact.avatar, messages: []
+            };
+            CONVERSATIONS.unshift(direct);
+        }
+        if (direct.blocked || direct.messages.some(m => m.id === payload.id)) return;
+        const sender = CONTACTS_DIRECTORY.find(c => c.id === payload.sender);
+        const message = {
+            id: payload.id, senderId: payload.sender,
+            senderName: sender?.name || payload.sender,
+            senderAvatar: sender?.avatar || '', content: payload.content,
+            timestamp: payload.sentAt || new Date().toISOString()
+        };
+        appendMessageToConversation(direct.id, message, false);
+        if (realtimeBus) realtimeBus.postMessage({type: 'SYNC_STATE', senderTabUserId: CURRENT_USER.id});
         return;
     }
 
@@ -711,6 +773,9 @@ function loginAsUser(userObj) {
     };
 
     saveTabUser(CURRENT_USER);
+    CONVERSATIONS = loadConversations();
+    activeConversationId = CONVERSATIONS[0]?.id || null;
+    connectWebSocket();
 
     // Đảm bảo tài khoản này có mặt trong CONTACTS_DIRECTORY chung
     const existingIdx = CONTACTS_DIRECTORY.findIndex(
@@ -733,6 +798,8 @@ function loginAsUser(userObj) {
     if (activeConv) {
         updateActiveChatHeaderAndDrawer(activeConv);
         renderMessages(activeConv);
+    } else {
+        selectConversation(null);
     }
 
     document.getElementById('authScreen')?.classList.add('d-none');
@@ -1362,11 +1429,9 @@ function openOrCreateDirectConversation(contactId) {
     let conv = CONVERSATIONS.find(
         (c) =>
             c.type === 'DIRECT' &&
-            ((c.participants &&
-                c.participants.includes(contact.id) &&
-                c.participants.includes(CURRENT_USER.id)) ||
-                c.contactId === contact.id ||
-                c.name === contact.name)
+            (c.participants?.length
+                ? c.participants.includes(contact.id) && c.participants.includes(CURRENT_USER.id)
+                : c.contactId === contact.id || c.name === contact.name)
     );
 
     if (!conv) {
@@ -1950,7 +2015,7 @@ function appendMessageToConversation(conversationId, messageObj, broadcastToOthe
         });
     } else {
         try {
-            localStorage.setItem(STORAGE_KEYS.CONVERSATIONS, JSON.stringify(CONVERSATIONS));
+            localStorage.setItem(conversationStorageKey(), JSON.stringify(CONVERSATIONS));
         } catch (_) { }
     }
 
@@ -2664,8 +2729,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const content = messageInput.value;
         if (!content.trim()) return;
 
-        sendChatMessage(activeConversationId, content);
-        messageInput.value = '';
+        if (sendChatMessage(activeConversationId, content)) messageInput.value = '';
         syncComposerButtons();
         document.getElementById('emojiPickerPopover')?.classList.add('d-none');
     });

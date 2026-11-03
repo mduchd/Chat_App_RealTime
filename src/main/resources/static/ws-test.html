@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Demo chat 1–1</title></head>
+<body>
+<h2>Demo WebSocket chat 1–1</h2>
+<p>Chỉ dùng danh tính thử nghiệm khi server chạy với <code>chat.demo-identities=true</code>.</p>
+<label>Tên của bạn <input id="username" maxlength="32" placeholder="alice"></label>
+<button id="connect">Kết nối</button>
+<button id="disconnect" disabled>Ngắt kết nối</button>
+<p id="status" role="status">Chưa kết nối</p>
+<form id="chat">
+    <label>Người nhận <input id="recipient" maxlength="32" placeholder="bob" required></label>
+    <label>Tin nhắn <input id="content" required></label>
+    <button id="send" disabled>Gửi</button>
+</form>
+<h3>Tin nhắn</h3><ul id="messages"></ul>
+<script src="https://cdn.jsdelivr.net/npm/@stomp/stompjs@7.0.0/bundles/stomp.umd.min.js"></script>
+<script>
+let client;
+const $ = id => document.getElementById(id);
+function status(text, connected) {
+    $('status').textContent = text;
+    $('send').disabled = !connected;
+}
+$('connect').onclick = () => {
+    const username = $('username').value.trim();
+    if (!/^[A-Za-z0-9_-]{1,32}$/.test(username)) {
+        status('Tên chỉ gồm chữ không dấu, số, dấu gạch ngang hoặc gạch dưới (1–32 ký tự).', false);
+        return;
+    }
+    $('connect').disabled = true;
+    $('username').disabled = true;
+    $('disconnect').disabled = false;
+    const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
+    client = new StompJs.Client({
+        brokerURL: `${protocol}://${location.host}/ws?user=${encodeURIComponent(username)}`,
+        reconnectDelay: 3000
+    });
+    client.onConnect = () => {
+        status(`Đã kết nối: ${username}`, true);
+        client.subscribe('/user/queue/messages', frame => {
+            const message = JSON.parse(frame.body);
+            const item = document.createElement('li');
+            item.textContent = `${message.sender} → ${message.recipient}: ${message.content}`;
+            $('messages').appendChild(item);
+        });
+    };
+    client.onWebSocketClose = () => status('Mất kết nối; đang thử kết nối lại…', false);
+    client.onStompError = frame => status(`Lỗi STOMP: ${frame.headers.message || 'không xác định'}`, false);
+    status('Đang kết nối…', false);
+    client.activate();
+};
+$('disconnect').onclick = async () => {
+    await client.deactivate();
+    status('Đã ngắt kết nối', false);
+    $('connect').disabled = false;
+    $('username').disabled = false;
+    $('disconnect').disabled = true;
+};
+$('chat').onsubmit = event => {
+    event.preventDefault();
+    const recipient = $('recipient').value.trim();
+    const content = $('content').value.trim();
+    if (!client?.connected || !recipient || !content) return;
+    client.publish({destination: '/app/chat.private', body: JSON.stringify({recipient, content})});
+    $('content').value = '';
+};
+</script>
+</body></html>
