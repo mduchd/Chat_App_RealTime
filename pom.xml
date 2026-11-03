@@ -27,6 +27,7 @@
     <properties>
         <java.version>21</java.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <start-class>com.teamchat.realtime_chat.RealtimeChatApplication</start-class>
     </properties>
 
     <!-- Dependencies -->

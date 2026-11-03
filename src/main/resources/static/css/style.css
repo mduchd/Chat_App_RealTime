@@ -1,822 +1,428 @@
 /* ==========================================================================
-   ChatSpace Messenger — Authentic Messenger Web + Minimalist SaaS Stylesheet
-   Đề tài: Chat Realtime bằng WebSocket với Spring Boot
+   CHATSPACE — Giao Diện Tối Giản Hiện Đại (Chuẩn Thiết Kế Mẫu ChatSpace)
    ========================================================================== */
 
 :root {
-    /* Màu chủ đề động của cuộc trò chuyện (mặc định Xanh Messenger #0084ff) */
-    --theme-color: #0084ff;
-    --theme-gradient: linear-gradient(135deg, #0084ff 0%, #0062ff 100%);
+    --page-bg: #e8f1f8;
+    --window-bg: #ffffff;
+    --topbar-bg: #16263d;
+    --topbar-text: #ffffff;
 
-    /* Bảng màu Messenger Light Mode & Minimalist SaaS */
-    --rail-bg: #f8fafc;
-    --sidebar-bg: #f8fafc;
-    --sidebar-hover: #f0f2f5;
-    --sidebar-active: #ebf5ff;
-    --chat-bg: #ffffff;
-    --surface-elevated: #ffffff;
-    --input-pill-bg: #f0f2f5;
-    --border-color: #e4e6eb;
-    --border-subtle: #f0f2f5;
+    --sidebar-card-bg: #f2f6fb;
+    --sidebar-item-hover: #e6effa;
+    --sidebar-item-active: #d9eafc;
 
-    /* Màu nhấn */
-    --primary: #0084ff;
-    --primary-bright: var(--theme-color);
-    --accent-purple: #6366f1;
+    --theme-color: #1d72b8;
+    --theme-hover: #155d98;
+    --avatar-inactive: #98a6b8;
 
-    /* Màu bong bóng tin nhắn */
-    --bubble-sent-gradient: var(--theme-gradient);
+    --bubble-received-bg: #edf2f7;
+    --bubble-received-text: #1e293b;
+    --bubble-sent-bg: var(--theme-color);
     --bubble-sent-text: #ffffff;
-    --bubble-received-bg: #f0f2f5;
-    --bubble-received-text: #050505;
 
-    /* Typography & Text */
-    --text-primary: #050505;
-    --text-secondary: #65676b;
-    --text-muted: #8a8d91;
-
-    /* Status & Badges */
-    --status-online: #31a24c;
-    --status-offline: #cbd5e1;
-    --badge-unread-bg: linear-gradient(135deg, #0084ff 0%, #ef4444 100%);
-
-    /* Shadows */
-    --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.05);
-    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.08);
-    --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.12);
-    --shadow-lg: 0 16px 36px rgba(0, 0, 0, 0.16);
+    --text-main: #1e293b;
+    --text-muted: #64748b;
+    --border-light: #e2e8f0;
+    --online-green: #10b981;
 }
 
-/* Chế độ tối (Dark Mode chuẩn Messenger) */
 body.dark-mode {
-    --rail-bg: #18191a;
-    --sidebar-bg: #18191a;
-    --sidebar-hover: #242526;
-    --sidebar-active: #263951;
-    --chat-bg: #18191a;
-    --surface-elevated: #242526;
-    --input-pill-bg: #3a3b3c;
-    --border-color: #2f3031;
-    --border-subtle: #2f3031;
-    --bubble-received-bg: #303030;
-    --bubble-received-text: #e4e6eb;
-    --text-primary: #e4e6eb;
-    --text-secondary: #b0b3b8;
-    --text-muted: #8a8d91;
+    --page-bg: #0b1120;
+    --window-bg: #111827;
+    --topbar-bg: #0f172a;
+    --sidebar-card-bg: #1e293b;
+    --sidebar-item-hover: #273549;
+    --sidebar-item-active: #1e3a5f;
+    --bubble-received-bg: #1e293b;
+    --bubble-received-text: #f1f5f9;
+    --text-main: #f1f5f9;
+    --text-muted: #94a3b8;
+    --border-light: #334155;
 }
 
 * {
     box-sizing: border-box;
 }
 
-html, body {
+html,
+body {
     height: 100%;
     margin: 0;
     padding: 0;
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    background-color: var(--chat-bg);
-    color: var(--text-primary);
-    -webkit-font-smoothing: antialiased;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background-color: var(--page-bg);
+    color: var(--text-main);
     overflow: hidden;
-    transition: background-color 0.2s ease, color 0.2s ease;
+    -webkit-font-smoothing: antialiased;
 }
 
 /* ==========================================================================
-   1. MÀN HÌNH ĐĂNG NHẬP GOOGLE OAUTH2 (AUTH STATE)
+   1. BỐ CỤC CỬA SỔ CHÍNH (CHATSPACE WINDOW)
    ========================================================================== */
-.auth-screen {
-    position: fixed;
-    inset: 0;
-    z-index: 2000;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 1.5rem;
-    background:
-        radial-gradient(circle at 15% 20%, rgba(0, 132, 255, 0.1) 0%, transparent 45%),
-        radial-gradient(circle at 85% 80%, rgba(124, 58, 237, 0.1) 0%, transparent 45%),
-        var(--sidebar-bg);
-}
-
-.auth-card {
-    width: 100%;
-    max-width: 430px;
-    background: var(--surface-elevated);
-    border: 1px solid var(--border-color);
-    border-radius: 22px;
-    padding: 2.5rem 2.25rem;
-    box-shadow: var(--shadow-lg);
-    text-align: center;
-    animation: fadeInScale 0.25s ease-out;
-}
-
-.brand-logo-lg {
-    width: 60px;
-    height: 60px;
-    margin: 0 auto 1rem;
-    border-radius: 18px;
-    background: linear-gradient(135deg, #0084ff 0%, #a033ff 55%, #ff5280 100%);
-    color: #ffffff;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.85rem;
-    box-shadow: 0 8px 20px rgba(0, 132, 255, 0.3);
-}
-
-.badge-saas {
-    display: inline-block;
-    padding: 0.25rem 0.75rem;
-    font-size: 0.72rem;
-    font-weight: 600;
-    letter-spacing: 0.03em;
-    text-transform: uppercase;
-    color: #0084ff;
-    background: rgba(0, 132, 255, 0.1);
-    border: 1px solid rgba(0, 132, 255, 0.25);
-    border-radius: 999px;
-    margin-bottom: 0.85rem;
-}
-
-.auth-title {
-    font-size: 1.55rem;
-    font-weight: 800;
-    color: var(--text-primary);
-    margin-bottom: 0.5rem;
-    letter-spacing: -0.02em;
-}
-
-.auth-title span {
-    background: linear-gradient(90deg, #0084ff, #a033ff, #ff5280);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-}
-
-.auth-subtitle {
-    font-size: 0.875rem;
-    color: var(--text-secondary);
-    line-height: 1.55;
-    margin-bottom: 1.75rem;
-}
-
-.btn-google-oauth {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.75rem;
-    width: 100%;
-    padding: 0.8rem 1.25rem;
-    background-color: #ffffff;
-    color: #0f172a;
-    border: 1px solid #cbd5e1;
-    border-radius: 999px;
-    font-size: 0.925rem;
-    font-weight: 600;
-    text-decoration: none;
-    transition: all 0.2s ease;
-    box-shadow: var(--shadow-xs);
-}
-
-.btn-google-oauth:hover {
-    background-color: #f8fafc;
-    border-color: #94a3b8;
-    box-shadow: var(--shadow-sm);
-    transform: translateY(-1px);
-    color: #0f172a;
-}
-
-.auth-divider {
-    position: relative;
-    margin: 1.35rem 0;
-    text-align: center;
-}
-
-.auth-divider::before {
-    content: "";
-    position: absolute;
-    top: 50%;
-    left: 0;
-    right: 0;
-    height: 1px;
-    background: var(--border-color);
-}
-
-.auth-divider span {
-    position: relative;
-    background: var(--surface-elevated);
-    padding: 0 0.75rem;
-    font-size: 0.75rem;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-}
-
-.btn-demo-login,
-.btn-primary-auth {
-    width: 100%;
-    padding: 0.78rem 1.25rem;
-    background: linear-gradient(135deg, #0084ff 0%, #0062ff 100%);
-    color: #ffffff;
-    border: none;
-    border-radius: 999px;
-    font-size: 0.92rem;
-    font-weight: 600;
-    transition: all 0.2s ease;
-}
-
-.btn-demo-login:hover,
-.btn-primary-auth:hover {
-    filter: brightness(1.06);
-    transform: translateY(-1px);
-    box-shadow: 0 6px 16px rgba(0, 132, 255, 0.3);
-}
-
-.auth-input {
-    border-radius: 12px;
-    padding: 0.62rem 0.9rem;
-    font-size: 0.9rem;
-    border: 1px solid var(--border-color);
-    background-color: var(--sidebar-bg);
-    color: var(--text-primary);
-}
-
-.auth-input:focus {
-    background-color: var(--surface-elevated);
-    color: var(--text-primary);
-    border-color: var(--primary-bright);
-    box-shadow: 0 0 0 3px rgba(0, 132, 255, 0.14);
-}
-
-.saved-account-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.45rem;
-    padding: 0.32rem 0.65rem 0.32rem 0.35rem;
-    border-radius: 999px;
-    border: 1px solid var(--border-color);
-    background: var(--sidebar-bg);
-    color: var(--text-primary);
-    font-size: 0.78rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.15s ease;
-}
-
-.saved-account-chip:hover {
-    border-color: var(--primary-bright);
-    background: rgba(0, 132, 255, 0.08);
-}
-
-.saved-account-chip img {
-    width: 22px;
-    height: 22px;
-    border-radius: 50%;
-}
-
-.auth-footer {
-    margin-top: 1.75rem;
-    padding-top: 1.1rem;
-    border-top: 1px solid var(--border-subtle);
-    font-size: 0.78rem;
-    color: var(--text-muted);
-}
-
-/* ==========================================================================
-   2. BỐ CỤC MESSENGER (NAV RAIL + SIDEBAR + CHAT + INFO DRAWER)
-   ========================================================================== */
-.chat-layout {
-    display: flex;
+.chatspace-viewport {
     width: 100vw;
     height: 100vh;
+    padding: 18px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.chatspace-window {
+    width: 100%;
+    max-width: 1360px;
+    height: 100%;
+    background-color: var(--window-bg);
+    border-radius: 16px;
+    box-shadow: 0 12px 36px rgba(22, 38, 61, 0.12);
+    display: flex;
+    flex-direction: column;
     overflow: hidden;
-    background-color: var(--chat-bg);
+    border: 1px solid rgba(255, 255, 255, 0.6);
 }
 
-/* ================= THANH ĐIỀU HƯỚNG DỌC BÊN TRÁI (MESSENGER NAV RAIL) ================= */
-.messenger-nav-rail {
-    width: 64px;
-    height: 100%;
-    background-color: var(--rail-bg);
-    border-right: 1px solid var(--border-color);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0.85rem 0;
-    flex-shrink: 0;
-    z-index: 50;
-}
-
-.rail-top,
-.rail-bottom {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.45rem;
-}
-
-.rail-brand {
-    width: 42px;
-    height: 42px;
-    border-radius: 12px;
-    background: linear-gradient(135deg, #0084ff 0%, #a033ff 55%, #ff5280 100%);
-    color: #ffffff;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.35rem;
-    margin-bottom: 0.45rem;
-    box-shadow: 0 4px 12px rgba(0, 132, 255, 0.25);
-}
-
-.rail-btn {
-    position: relative;
-    width: 44px;
-    height: 44px;
-    border-radius: 12px;
-    border: none;
-    background: transparent;
-    color: var(--text-secondary);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.15rem;
-    transition: all 0.15s ease;
-    cursor: pointer;
-}
-
-.rail-btn:hover {
-    background-color: var(--sidebar-hover);
-    color: var(--text-primary);
-}
-
-.rail-btn.active {
-    background-color: rgba(0, 132, 255, 0.12);
-    color: var(--primary-bright);
-}
-
-.rail-badge {
-    position: absolute;
-    top: 4px;
-    right: 4px;
-    min-width: 17px;
-    height: 17px;
-    padding: 0 4px;
-    border-radius: 999px;
-    background: #ef4444;
-    color: #ffffff;
-    font-size: 0.65rem;
-    font-weight: 700;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border: 2px solid var(--rail-bg);
-}
-
-.rail-badge.secondary {
-    background: var(--primary-bright);
-}
-
-.rail-avatar-wrap {
-    position: relative;
-    cursor: pointer;
-    margin-top: 0.25rem;
-}
-
-.rail-user-avatar {
-    width: 38px;
-    height: 38px;
-    border-radius: 50%;
-    object-fit: cover;
-    border: 2px solid var(--border-color);
-}
-
-.rail-avatar-wrap .status-dot {
-    position: absolute;
-    bottom: 0;
-    right: 0;
-    width: 11px;
-    height: 11px;
-    border: 2px solid var(--rail-bg);
-}
-
-/* ================= CỘT TRÁI: SIDEBAR DANH SÁCH ĐOẠN CHAT ================= */
-.sidebar-panel {
-    width: 340px;
-    min-width: 320px;
-    max-width: 380px;
-    height: 100%;
-    background-color: var(--sidebar-bg);
-    border-right: 1px solid var(--border-color);
-    display: flex;
-    flex-direction: column;
-    flex-shrink: 0;
-    transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.sidebar-header {
-    padding: 0.9rem 1rem 0.6rem;
+/* Thanh Topbar màu xanh đậm #16263d */
+.chatspace-topbar {
+    height: 54px;
+    background-color: var(--topbar-bg);
+    color: var(--topbar-text);
+    padding: 0 22px;
     display: flex;
     align-items: center;
     justify-content: space-between;
+    flex-shrink: 0;
 }
 
-.messenger-heading {
-    font-size: 1.45rem;
-    font-weight: 800;
-    letter-spacing: -0.02em;
-    color: var(--text-primary);
-}
-
-.badge-brand-pill {
-    font-size: 0.68rem;
+.topbar-brand {
+    font-size: 1.05rem;
     font-weight: 700;
-    padding: 0.15rem 0.5rem;
+    letter-spacing: 0.06em;
+    color: #ffffff;
+}
+
+.topbar-ws-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.75rem;
+    padding: 3px 10px;
     border-radius: 999px;
-    background: rgba(0, 132, 255, 0.12);
-    color: var(--primary-bright);
-}
-
-.circle-action-btn {
-    width: 36px;
-    height: 36px;
-    border-radius: 50%;
-    border: none;
-    background-color: var(--input-pill-bg);
-    color: var(--text-primary);
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.92rem;
-    transition: all 0.15s ease;
-    cursor: pointer;
-}
-
-.circle-action-btn:hover {
-    background-color: var(--border-color);
-    transform: translateY(-1px);
-}
-
-/* Badge trạng thái WebSocket */
-.ws-connection-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    font-size: 0.7rem;
-    font-weight: 500;
-    color: var(--text-secondary);
-    margin-top: 2px;
+    background: rgba(255, 255, 255, 0.1);
+    color: #cbd5e1;
 }
 
 .ws-dot {
     width: 7px;
     height: 7px;
     border-radius: 50%;
-    background-color: #f59e0b;
+    background: #94a3b8;
 }
 
 .ws-dot.connected {
-    background-color: var(--status-online);
+    background: #34d399;
 }
 
-.ws-dot.mock {
-    background-color: #6366f1;
+.topbar-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
 }
 
-/* Nút icon tối giản */
-.icon-btn {
-    position: relative;
-    width: 36px;
-    height: 36px;
-    border-radius: 50%;
-    border: none;
-    background: transparent;
-    color: var(--text-secondary);
+.topbar-user-btn {
+    background: rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    color: #ffffff;
+    border-radius: 999px;
+    padding: 4px 12px 4px 5px;
+    font-size: 0.8rem;
+    font-weight: 500;
     display: inline-flex;
     align-items: center;
-    justify-content: center;
-    font-size: 1rem;
-    transition: all 0.15s ease;
-    cursor: pointer;
-}
-
-.icon-btn.theme-colored-icon {
-    color: var(--primary-bright);
-}
-
-.icon-btn:hover,
-.icon-btn.active {
-    background-color: var(--sidebar-hover);
-}
-
-/* Popover Trung tâm Thông báo (mở từ thanh Nav Rail) */
-.notification-popover {
-    position: absolute;
-    bottom: 0;
-    left: calc(100% + 12px);
-    width: 340px;
-    background: var(--surface-elevated);
-    border: 1px solid var(--border-color);
-    border-radius: 16px;
-    box-shadow: var(--shadow-lg);
-    z-index: 1500;
-    overflow: hidden;
-    animation: fadeInScale 0.16s ease-out;
-}
-
-.notif-header {
-    padding: 0.8rem 1rem;
-    border-bottom: 1px solid var(--border-color);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    font-size: 0.9rem;
-}
-
-.btn-link-xs {
-    border: none;
-    background: transparent;
-    color: var(--primary-bright);
-    font-size: 0.75rem;
-    font-weight: 600;
-    padding: 0;
-}
-
-.btn-link-xs:hover {
-    text-decoration: underline;
-}
-
-.notif-list {
-    max-height: 320px;
-    overflow-y: auto;
-}
-
-.notif-item {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.7rem;
-    padding: 0.75rem 1rem;
-    border-bottom: 1px solid var(--border-subtle);
+    gap: 7px;
     cursor: pointer;
     transition: background 0.15s ease;
 }
 
-.notif-item:hover {
-    background: var(--sidebar-hover);
+.topbar-user-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
 }
 
-.notif-item.unread {
-    background: rgba(0, 132, 255, 0.07);
-}
-
-.notif-icon {
-    width: 34px;
-    height: 34px;
+.topbar-user-initials {
+    width: 24px;
+    height: 24px;
     border-radius: 50%;
-    background: rgba(0, 132, 255, 0.12);
-    color: var(--primary-bright);
-    display: flex;
+    background: var(--theme-color);
+    color: #ffffff;
+    font-size: 0.7rem;
+    font-weight: 700;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
-    flex-shrink: 0;
-    font-size: 0.85rem;
 }
 
-.notif-text {
-    font-size: 0.8rem;
-    color: var(--text-primary);
-    line-height: 1.4;
-}
-
-.notif-time {
-    font-size: 0.7rem;
-    color: var(--text-muted);
-    margin-top: 2px;
-}
-
-/* Ô tìm kiếm tròn & Khay Người đang hoạt động (Active Contacts Strip) */
-.sidebar-search {
-    padding: 0.25rem 1rem 0.65rem;
-    border-bottom: 1px solid var(--border-color);
-}
-
-.search-input-wrapper {
+.topbar-icon-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    border: none;
+    background: transparent;
+    color: #cbd5e1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.95rem;
+    cursor: pointer;
     position: relative;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.topbar-icon-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: #ffffff;
+}
+
+.topbar-badge {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    min-width: 15px;
+    height: 15px;
+    padding: 0 4px;
+    border-radius: 999px;
+    background: #ef4444;
+    color: #ffffff;
+    font-size: 0.62rem;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.window-dots {
     display: flex;
     align-items: center;
+    gap: 8px;
+    margin-left: 6px;
 }
 
-.search-icon {
-    position: absolute;
-    left: 0.95rem;
-    color: var(--text-muted);
-    font-size: 0.88rem;
-    pointer-events: none;
+.win-dot {
+    width: 13px;
+    height: 13px;
+    border-radius: 50%;
+    display: inline-block;
 }
 
-.search-input {
-    padding: 0.52rem 2.2rem 0.52rem 2.4rem;
-    font-size: 0.88rem;
-    border-radius: 999px;
+.win-dot.blue {
+    background: #60a5fa;
+}
+
+.win-dot.yellow {
+    background: #f5b041;
+}
+
+.win-dot.green {
+    background: #2ecc71;
+}
+
+/* ==========================================================================
+   2. THÂN CỬA SỔ: CỘT HỘI THOẠI TRÁI & KHUNG CHAT PHẢI
+   ========================================================================== */
+.chatspace-body {
+    flex: 1;
+    display: flex;
+    gap: 22px;
+    padding: 20px 22px;
+    min-height: 0;
+    overflow: hidden;
+}
+
+/* Cột trái: Thẻ Hội thoại nền #f2f6fb bo góc */
+.sidebar-card {
+    width: 310px;
+    flex-shrink: 0;
+    background-color: var(--sidebar-card-bg);
+    border-radius: 14px;
+    padding: 18px 14px;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.sidebar-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 4px;
+    margin-bottom: 12px;
+}
+
+.sidebar-heading {
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: var(--text-main);
+    margin: 0;
+}
+
+.btn-new-group {
+    border: none;
+    background: rgba(29, 114, 184, 0.12);
+    color: var(--theme-color);
+    font-size: 0.78rem;
+    font-weight: 600;
+    padding: 5px 10px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.btn-new-group:hover {
+    background: rgba(29, 114, 184, 0.22);
+}
+
+/* Ô tìm kiếm trắng bo góc đúng mẫu */
+.sidebar-search-box {
+    position: relative;
+    margin-bottom: 10px;
+}
+
+.sidebar-search-input {
+    width: 100%;
+    height: 40px;
+    background-color: var(--window-bg);
     border: 1px solid transparent;
-    background-color: var(--input-pill-bg);
-    color: var(--text-primary);
-    transition: all 0.18s ease;
+    border-radius: 10px;
+    padding: 0 32px 0 14px;
+    font-size: 0.86rem;
+    color: var(--text-main);
+    outline: none;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
 }
 
-.search-input:focus {
-    background-color: var(--surface-elevated);
-    color: var(--text-primary);
-    border-color: var(--primary-bright);
-    box-shadow: 0 0 0 3px rgba(0, 132, 255, 0.12);
+.sidebar-search-input:focus {
+    border-color: var(--theme-color);
+}
+
+.sidebar-search-input::placeholder {
+    color: #94a3b8;
 }
 
 .btn-clear-search {
     position: absolute;
-    right: 0.5rem;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
     border: none;
     background: transparent;
-    color: var(--text-muted);
-    font-size: 0.8rem;
-    padding: 0.25rem 0.4rem;
-}
-
-/* Khay ngang Người đang hoạt động (Messenger Active Now Carousel) */
-.active-now-strip {
-    display: flex;
-    gap: 0.75rem;
-    overflow-x: auto;
-    padding: 0.75rem 0.1rem 0.35rem;
-    scrollbar-width: none;
-}
-
-.active-now-strip::-webkit-scrollbar {
-    display: none;
-}
-
-.active-person-item {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.28rem;
-    width: 56px;
-    flex-shrink: 0;
+    color: #94a3b8;
     cursor: pointer;
-    text-align: center;
 }
 
-.active-person-avatar {
-    width: 46px;
-    height: 46px;
-    border-radius: 50%;
-    object-fit: cover;
-    transition: transform 0.15s ease;
-}
-
-.active-person-item:hover .active-person-avatar {
-    transform: scale(1.06);
-}
-
-.active-person-name {
-    font-size: 0.7rem;
-    font-weight: 500;
-    color: var(--text-secondary);
-    width: 100%;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-/* Bộ lọc viên thuốc Messenger */
-.conversation-tabs {
+/* Bộ lọc nhỏ gọn */
+.ig-tabs {
     display: flex;
-    gap: 0.35rem;
-    margin-top: 0.45rem;
+    gap: 4px;
+    margin-bottom: 10px;
+    padding: 0 2px;
 }
 
 .tab-pill {
-    padding: 0.36rem 0.75rem;
-    border-radius: 999px;
+    flex: 1;
     border: none;
     background: transparent;
-    color: var(--text-secondary);
-    font-size: 0.8rem;
+    color: var(--text-muted);
+    font-size: 0.74rem;
     font-weight: 600;
+    padding: 5px 4px;
+    border-radius: 7px;
+    cursor: pointer;
     transition: all 0.15s ease;
     white-space: nowrap;
 }
 
 .tab-pill:hover {
-    background: var(--sidebar-hover);
-    color: var(--text-primary);
+    background: var(--sidebar-item-hover);
+    color: var(--text-main);
 }
 
 .tab-pill.active {
-    background: rgba(0, 132, 255, 0.12);
-    color: var(--primary-bright);
+    background: var(--window-bg);
+    color: var(--theme-color);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
 }
 
 .tab-mini-count {
     display: inline-block;
+    background: var(--theme-color);
+    color: #ffffff;
+    font-size: 0.65rem;
     padding: 0 5px;
     border-radius: 999px;
-    background: rgba(0, 132, 255, 0.16);
-    color: var(--primary-bright);
-    font-size: 0.68rem;
+    margin-left: 2px;
 }
 
-/* Danh sách đoạn chat */
+/* Danh sách hội thoại */
 .conversation-list {
     flex: 1;
     overflow-y: auto;
-    padding: 0.4rem 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding-right: 2px;
+}
+
+.conversation-list::-webkit-scrollbar {
+    width: 4px;
+}
+
+.conversation-list::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 999px;
 }
 
 .conversation-item {
-    position: relative;
     display: flex;
     align-items: center;
-    gap: 0.75rem;
-    padding: 0.65rem 0.75rem;
-    margin-bottom: 2px;
-    border-radius: 12px;
-    border-left: 4px solid transparent;
+    gap: 12px;
+    padding: 10px 12px;
+    border-radius: 10px;
     cursor: pointer;
-    transition: all 0.14s ease;
-    user-select: none;
+    position: relative;
+    transition: background 0.15s ease;
 }
 
 .conversation-item:hover {
-    background-color: var(--sidebar-hover);
+    background-color: var(--sidebar-item-hover);
 }
 
 .conversation-item.active {
-    background-color: var(--sidebar-active);
-    border-left-color: var(--primary-bright);
+    background-color: var(--sidebar-item-active);
 }
 
+/* Avatar chữ cái tròn chuẩn theo ảnh mẫu (AN, BM, GR, QL) */
 .avatar-wrapper {
     position: relative;
     flex-shrink: 0;
 }
 
-.conv-avatar {
-    width: 50px;
-    height: 50px;
+.conv-avatar-circle {
+    width: 40px;
+    height: 40px;
     border-radius: 50%;
-    object-fit: cover;
-}
-
-.conv-avatar-group {
-    width: 50px;
-    height: 50px;
-    border-radius: 50%;
+    background-color: var(--avatar-inactive);
+    color: #ffffff;
+    font-size: 0.82rem;
+    font-weight: 700;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-weight: 700;
-    font-size: 0.95rem;
-    color: #ffffff;
-    background: linear-gradient(135deg, #0084ff 0%, #6366f1 100%);
+    letter-spacing: 0.02em;
+    user-select: none;
 }
 
-/* Chấm trạng thái hoạt động */
-.status-dot {
-    display: inline-block;
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    background-color: var(--status-offline);
-}
-
-.avatar-wrapper .status-dot {
-    position: absolute;
-    bottom: 1px;
-    right: 1px;
-    width: 13px;
-    height: 13px;
-    border: 2.5px solid var(--sidebar-bg);
-}
-
-.status-dot.online {
-    background-color: var(--status-online);
-}
-
-.status-dot.pulse {
-    box-shadow: 0 0 0 0 rgba(49, 162, 76, 0.65);
-    animation: statusPulse 2s infinite;
-}
-
-@keyframes statusPulse {
-    0% {
-        box-shadow: 0 0 0 0 rgba(49, 162, 76, 0.65);
-    }
-    70% {
-        box-shadow: 0 0 0 6px rgba(49, 162, 76, 0);
-    }
-    100% {
-        box-shadow: 0 0 0 0 rgba(49, 162, 76, 0);
-    }
+.conversation-item.active .conv-avatar-circle,
+.conv-avatar-circle.active-avatar {
+    background-color: var(--theme-color);
 }
 
 .conv-content {
@@ -828,39 +434,28 @@ html, body {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 0.4rem;
-    margin-bottom: 0.15rem;
+    gap: 4px;
+    margin-bottom: 2px;
 }
 
 .conv-name-wrap {
     display: flex;
     align-items: center;
-    gap: 0.35rem;
+    gap: 5px;
     min-width: 0;
 }
 
 .conv-name {
-    font-size: 0.93rem;
-    font-weight: 600;
-    color: var(--text-primary);
+    font-size: 0.92rem;
+    font-weight: 700;
+    color: var(--text-main);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
-.conv-flag-icon {
-    font-size: 0.7rem;
-    color: var(--text-muted);
-    flex-shrink: 0;
-}
-
-.conv-flag-icon.pinned {
-    color: var(--primary-bright);
-    transform: rotate(35deg);
-}
-
 .conv-time {
-    font-size: 0.73rem;
+    font-size: 0.7rem;
     color: var(--text-muted);
     flex-shrink: 0;
 }
@@ -869,264 +464,170 @@ html, body {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 0.5rem;
+    gap: 6px;
 }
 
 .conv-last-msg {
-    font-size: 0.82rem;
-    color: var(--text-secondary);
+    font-size: 0.78rem;
+    color: var(--text-muted);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
-.conversation-item.unread .conv-name,
 .conversation-item.unread .conv-last-msg {
-    font-weight: 700;
-    color: var(--text-primary);
+    color: var(--text-main);
+    font-weight: 600;
 }
 
-/* Nút 3 chấm `...` tròn nổi lên khi di chuột vào đoạn chat */
+.conv-flag-icon {
+    font-size: 0.68rem;
+    color: var(--text-muted);
+}
+
+.conv-flag-icon.pinned {
+    color: var(--theme-color);
+}
+
+.unread-badge {
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: var(--theme-color);
+    color: #ffffff;
+    font-size: 0.68rem;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
 .conv-more-btn {
     position: absolute;
-    right: 0.75rem;
+    right: 8px;
     top: 50%;
     transform: translateY(-50%);
-    width: 32px;
-    height: 32px;
+    width: 28px;
+    height: 28px;
     border-radius: 50%;
-    border: 1px solid var(--border-color);
-    background: var(--surface-elevated);
-    color: var(--text-secondary);
+    border: none;
+    background: var(--window-bg);
+    color: var(--text-muted);
+    box-shadow: 0 2px 6px rgba(15, 23, 42, 0.12);
     display: none;
     align-items: center;
     justify-content: center;
-    font-size: 0.85rem;
-    box-shadow: var(--shadow-sm);
-    z-index: 5;
+    cursor: pointer;
 }
 
 .conversation-item:hover .conv-more-btn {
     display: inline-flex;
 }
 
-.conv-more-btn:hover {
-    background: var(--primary-bright);
-    color: #ffffff;
-    border-color: var(--primary-bright);
-}
-
-.unread-badge {
-    min-width: 20px;
-    height: 20px;
-    padding: 0 6px;
-    border-radius: 999px;
-    background: var(--badge-unread-bg);
-    color: #ffffff;
-    font-size: 0.7rem;
-    font-weight: 700;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-}
-
 /* ==========================================================================
-   3. MENU NGỮ CẢNH (`...` DROPDOWN MENU GIỐNG MESSENGER)
-   ========================================================================== */
-.conv-context-menu {
-    position: fixed;
-    z-index: 1500;
-    width: 230px;
-    background: var(--surface-elevated);
-    border: 1px solid var(--border-color);
-    border-radius: 14px;
-    padding: 0.4rem;
-    box-shadow: var(--shadow-lg);
-    animation: fadeInScale 0.12s ease-out;
-}
-
-.context-menu-item {
-    width: 100%;
-    border: none;
-    background: transparent;
-    padding: 0.55rem 0.75rem;
-    border-radius: 8px;
-    display: flex;
-    align-items: center;
-    gap: 0.65rem;
-    font-size: 0.84rem;
-    font-weight: 500;
-    color: var(--text-primary);
-    text-align: left;
-    transition: background 0.12s ease;
-}
-
-.context-menu-item i {
-    width: 16px;
-    text-align: center;
-}
-
-.context-menu-item:hover {
-    background: var(--sidebar-hover);
-}
-
-.context-menu-divider {
-    margin: 0.3rem 0;
-    border-color: var(--border-color);
-}
-
-/* ==========================================================================
-   4. CỘT PHẢI: KHUNG CHAT CHÍNH + TƯƠNG TÁC TIN NHẮN THỰC TẾ
+   3. CỘT PHẢI: KHUNG CHAT CHÍNH
    ========================================================================== */
 .chat-main-panel {
     flex: 1;
-    height: 100%;
-    background-color: var(--chat-bg);
     display: flex;
     flex-direction: column;
-    position: relative;
     min-width: 0;
+    min-height: 0;
+    background-color: var(--window-bg);
 }
 
-.empty-chat-state {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 2rem;
-    text-align: center;
-    background:
-        radial-gradient(circle at 50% 40%, rgba(0, 132, 255, 0.05) 0%, transparent 60%),
-        var(--chat-bg);
-}
-
-.empty-state-content {
-    max-width: 440px;
-}
-
-.empty-illustration {
-    width: 76px;
-    height: 76px;
-    margin: 0 auto 1.25rem;
-    border-radius: 24px;
-    background: rgba(0, 132, 255, 0.1);
-    color: var(--primary-bright);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 2.1rem;
-}
-
-.empty-title {
-    font-size: 1.2rem;
-    font-weight: 800;
-    color: var(--text-primary);
-    margin-bottom: 0.5rem;
-}
-
-.empty-description {
-    font-size: 0.88rem;
-    color: var(--text-secondary);
-    line-height: 1.6;
-    margin-bottom: 1.25rem;
-}
-
-.empty-tech-pills {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 0.5rem;
-}
-
-.empty-tech-pills span {
-    font-size: 0.74rem;
-    padding: 0.35rem 0.75rem;
-    border-radius: 999px;
-    background: var(--sidebar-bg);
-    border: 1px solid var(--border-color);
-    color: var(--text-secondary);
-}
-
-/* Khung chat đang hoạt động */
 .active-chat-view {
     flex: 1;
     display: flex;
     flex-direction: column;
-    height: 100%;
-    overflow: hidden;
+    min-height: 0;
 }
 
+/* Header tên cuộc trò chuyện bên trái + Đang hoạt động bên phải + gạch ngang */
 .chat-header {
-    height: 68px;
-    padding: 0 1.25rem;
-    border-bottom: 1px solid var(--border-color);
-    background-color: var(--chat-bg);
+    padding: 4px 4px 14px 4px;
+    border-bottom: 1px solid var(--border-light);
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 12px;
     flex-shrink: 0;
 }
 
-.chat-header .conv-avatar,
-.chat-header .conv-avatar-group {
-    width: 42px;
-    height: 42px;
-}
-
 .chat-partner-name {
-    font-size: 0.98rem;
+    font-size: 1.25rem;
     font-weight: 700;
-    color: var(--text-primary);
-}
-
-.badge-room-type {
-    font-size: 0.68rem;
-    font-weight: 600;
-    padding: 0.15rem 0.5rem;
-    border-radius: 999px;
-    background: var(--sidebar-hover);
-    color: var(--text-secondary);
+    color: var(--text-main);
 }
 
 .header-state-icon {
-    font-size: 0.76rem;
     color: var(--text-muted);
+    font-size: 0.8rem;
+}
+
+.chat-header-right {
+    display: flex;
+    align-items: center;
+    gap: 14px;
 }
 
 .chat-partner-status {
-    display: flex;
+    display: inline-flex;
     align-items: center;
-    gap: 0.4rem;
-    font-size: 0.76rem;
-    color: var(--text-secondary);
-    margin-top: 1px;
+    gap: 7px;
+    font-size: 0.84rem;
+    color: var(--text-muted);
 }
 
-.subscription-path {
-    font-size: 0.7rem;
-    color: var(--primary-bright);
-    background: rgba(0, 132, 255, 0.1);
-    padding: 0.05rem 0.4rem;
-    border-radius: 4px;
+.status-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background-color: #cbd5e1;
+    display: inline-block;
+}
+
+.status-dot.online {
+    background-color: var(--online-green);
 }
 
 .chat-header-actions {
     display: flex;
     align-items: center;
-    gap: 0.25rem;
+    gap: 4px;
 }
 
-/* Thanh tìm kiếm tin nhắn bên trong cuộc trò chuyện */
+.icon-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.icon-btn:hover,
+.icon-btn.active {
+    background: var(--sidebar-card-bg);
+    color: var(--theme-color);
+}
+
+/* Thanh tìm kiếm trong hội thoại */
 .in-chat-search-bar {
-    padding: 0.55rem 1.25rem;
-    border-bottom: 1px solid var(--border-color);
-    background: var(--sidebar-bg);
+    padding: 8px 4px;
+    border-bottom: 1px solid var(--border-light);
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    gap: 10px;
 }
 
+/* Thân khung chat */
 .chat-body-split {
     flex: 1;
     display: flex;
@@ -1139,96 +640,56 @@ html, body {
     display: flex;
     flex-direction: column;
     min-width: 0;
-    height: 100%;
+    min-height: 0;
 }
 
-/* Vùng hiển thị tin nhắn (Chat Log) */
 .chat-log {
     flex: 1;
     overflow-y: auto;
-    padding: 1.25rem 1.35rem;
+    padding: 20px 6px;
     display: flex;
     flex-direction: column;
-    gap: 0.85rem;
-    background-color: var(--chat-bg);
+    gap: 14px;
 }
 
-.chat-date-divider {
-    align-self: center;
-    margin: 0.35rem 0;
-    padding: 0.2rem 0.8rem;
+.chat-log::-webkit-scrollbar {
+    width: 5px;
+}
+
+.chat-log::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
     border-radius: 999px;
-    font-size: 0.73rem;
-    font-weight: 600;
-    color: var(--text-muted);
 }
 
+/* Bong bóng tin nhắn đúng chuẩn mẫu ChatSpace */
 .message-row {
-    position: relative;
     display: flex;
-    align-items: flex-end;
-    gap: 0.55rem;
-    max-width: 75%;
-    animation: messageSlideUp 0.16s ease-out;
+    flex-direction: column;
+    max-width: 68%;
 }
 
 .message-row.received {
     align-self: flex-start;
+    align-items: flex-start;
 }
 
 .message-row.sent {
     align-self: flex-end;
-    flex-direction: row-reverse;
-}
-
-.msg-sender-avatar {
-    width: 28px;
-    height: 28px;
-    border-radius: 50%;
-    object-fit: cover;
-    flex-shrink: 0;
-    margin-bottom: 18px;
-}
-
-.message-group {
-    position: relative;
-    display: flex;
-    flex-direction: column;
-}
-
-.message-row.sent .message-group {
     align-items: flex-end;
 }
 
-.message-row.received .message-group {
-    align-items: flex-start;
-}
-
 .msg-sender-name {
-    font-size: 0.72rem;
+    font-size: 0.73rem;
     font-weight: 600;
-    color: var(--text-secondary);
-    margin: 0 0 0.2rem 0.5rem;
-}
-
-/* Hộp trích dẫn khi Trả lời tin nhắn (Quoted Reply Box) */
-.msg-quoted-box {
-    font-size: 0.76rem;
-    padding: 0.35rem 0.7rem;
-    margin-bottom: -6px;
-    border-radius: 12px;
-    background: var(--sidebar-hover);
-    color: var(--text-secondary);
-    border-left: 3px solid var(--primary-bright);
-    max-width: 100%;
-    opacity: 0.9;
+    color: var(--text-muted);
+    margin: 0 0 3px 4px;
 }
 
 .message-bubble-wrap {
-    position: relative;
     display: flex;
     align-items: center;
-    gap: 0.4rem;
+    gap: 8px;
+    position: relative;
 }
 
 .message-row.sent .message-bubble-wrap {
@@ -1236,365 +697,236 @@ html, body {
 }
 
 .message-bubble {
-    position: relative;
-    padding: 0.62rem 0.95rem;
+    padding: 11px 16px 8px 16px;
+    border-radius: 12px;
     font-size: 0.92rem;
     line-height: 1.45;
-    word-wrap: break-word;
+    position: relative;
+    min-width: 140px;
+    word-break: break-word;
 }
 
 .message-row.received .message-bubble {
     background-color: var(--bubble-received-bg);
     color: var(--bubble-received-text);
-    border-radius: 18px 18px 18px 4px;
 }
 
 .message-row.sent .message-bubble {
-    background: var(--bubble-sent-gradient);
+    background-color: var(--bubble-sent-bg);
     color: var(--bubble-sent-text);
-    border-radius: 18px 18px 4px 18px;
 }
 
-/* Trạng thái tin nhắn đã bị thu hồi (Unsent Message giống Messenger) */
 .message-bubble.unsent {
     background: transparent !important;
+    border: 1px dashed var(--border-light);
     color: var(--text-muted) !important;
-    border: 1px dashed var(--border-color);
     font-style: italic;
 }
 
-/* Hình ảnh đính kèm trong tin nhắn */
+/* Giờ gửi nằm gọn bên trong góc dưới bong bóng giống hệt ảnh mẫu */
+.bubble-time {
+    font-size: 0.68rem;
+    margin-top: 4px;
+    opacity: 0.72;
+}
+
+.message-row.received .bubble-time {
+    text-align: left;
+    color: var(--text-muted);
+}
+
+.message-row.sent .bubble-time {
+    text-align: right;
+    color: rgba(255, 255, 255, 0.85);
+}
+
+/* Trích dẫn trả lời (Reply) */
+.msg-quoted-box {
+    font-size: 0.76rem;
+    padding: 6px 10px;
+    border-radius: 8px;
+    background: var(--sidebar-card-bg);
+    border-left: 3px solid var(--theme-color);
+    color: var(--text-muted);
+    margin-bottom: 4px;
+    max-width: 100%;
+}
+
+/* Ảnh đính kèm trong tin nhắn */
 .msg-attached-image {
     max-width: 260px;
     max-height: 220px;
-    border-radius: 14px;
+    border-radius: 8px;
     display: block;
-    margin-bottom: 0.35rem;
-    object-fit: cover;
-    cursor: pointer;
+    margin-bottom: 6px;
 }
 
-/* Huy hiệu cảm xúc (Reaction Pill) đính ở góc dưới bong bóng tin nhắn */
+/* Cảm xúc thả trên tin nhắn */
 .msg-reaction-pill {
     position: absolute;
-    bottom: -10px;
-    right: 8px;
-    background: var(--surface-elevated);
-    border: 1px solid var(--border-color);
+    bottom: -9px;
+    right: 10px;
+    background: var(--window-bg);
+    border: 1px solid var(--border-light);
     border-radius: 999px;
     padding: 1px 6px;
-    font-size: 0.72rem;
-    box-shadow: var(--shadow-xs);
-    z-index: 3;
+    font-size: 0.74rem;
+    box-shadow: 0 2px 4px rgba(15, 23, 42, 0.08);
 }
 
-/* Thanh công cụ hiện lên khi di chuột vào tin nhắn (Thả cảm xúc, Trả lời, Thu hồi) */
+/* Thanh công cụ khi di chuột vào tin nhắn */
 .msg-hover-toolbar {
     display: none;
     align-items: center;
     gap: 2px;
-    background: var(--surface-elevated);
-    border: 1px solid var(--border-color);
+    background: var(--window-bg);
+    border: 1px solid var(--border-light);
     border-radius: 999px;
     padding: 2px 6px;
-    box-shadow: var(--shadow-sm);
-    white-space: nowrap;
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
 }
 
-.message-row:hover .msg-hover-toolbar {
+.message-bubble-wrap:hover .msg-hover-toolbar {
     display: inline-flex;
 }
 
 .msg-tool-btn {
     border: none;
     background: transparent;
+    font-size: 0.8rem;
     padding: 2px 5px;
     border-radius: 50%;
-    font-size: 0.82rem;
-    color: var(--text-secondary);
-    transition: transform 0.12s ease, background 0.12s ease;
+    cursor: pointer;
+    color: var(--text-muted);
 }
 
 .msg-tool-btn:hover {
-    background: var(--sidebar-hover);
-    transform: scale(1.2);
-    color: var(--text-primary);
-}
-
-.message-meta {
-    display: flex;
-    align-items: center;
-    gap: 0.3rem;
-    margin-top: 0.3rem;
-    padding: 0 0.25rem;
-    font-size: 0.69rem;
-    color: var(--text-muted);
-}
-
-/* Chỉ báo "Đang soạn tin nhắn..." (Typing Indicator) */
-.typing-indicator-bar {
-    padding: 0.35rem 1.5rem;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-.typing-dots {
-    display: inline-flex;
-    align-items: center;
-    gap: 3px;
-    background: var(--bubble-received-bg);
-    padding: 6px 10px;
-    border-radius: 999px;
-}
-
-.typing-dots span {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--text-secondary);
-    animation: typingBounce 1.2s infinite ease-in-out;
-}
-
-.typing-dots span:nth-child(2) {
-    animation-delay: 0.15s;
-}
-
-.typing-dots span:nth-child(3) {
-    animation-delay: 0.3s;
-}
-
-@keyframes typingBounce {
-    0%, 80%, 100% {
-        transform: translateY(0);
-        opacity: 0.5;
-    }
-    40% {
-        transform: translateY(-4px);
-        opacity: 1;
-    }
-}
-
-/* Khung đang Trả lời tin nhắn (Reply Preview Banner) */
-.reply-preview-banner {
-    padding: 0.5rem 1.25rem;
-    background: var(--sidebar-bg);
-    border-top: 1px solid var(--border-color);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-}
-
-.reply-banner-title {
-    font-size: 0.76rem;
-    color: var(--text-primary);
-}
-
-.reply-banner-snippet {
-    font-size: 0.75rem;
-    color: var(--text-secondary);
-}
-
-/* Thanh cảnh báo khi Chặn người dùng */
-.blocked-banner {
-    padding: 1rem 1.5rem;
-    border-top: 1px solid var(--border-color);
-    background: var(--sidebar-bg);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-}
-
-.blocked-banner-text {
-    font-size: 0.86rem;
-    font-weight: 500;
-    color: var(--text-primary);
-}
-
-.btn-unblock-pill {
-    padding: 0.45rem 1rem;
-    border-radius: 999px;
-    border: 1px solid var(--border-color);
-    background: var(--surface-elevated);
-    color: var(--primary-bright);
-    font-size: 0.82rem;
-    font-weight: 600;
-}
-
-/* Thanh nhập tin nhắn chuẩn Messenger (Composer) */
-.chat-input-area {
-    position: relative;
-    padding: 0.65rem 1rem 0.85rem;
-    background-color: var(--chat-bg);
-    border-top: 1px solid var(--border-subtle);
-}
-
-.messenger-composer {
-    display: flex;
-    align-items: center;
-    gap: 0.45rem;
-}
-
-.composer-left-tools {
-    display: flex;
-    align-items: center;
-    gap: 0.1rem;
-}
-
-.message-pill-bar {
-    display: flex;
-    align-items: center;
-    padding: 0.22rem 0.4rem 0.22rem 0.9rem;
-    background-color: var(--input-pill-bg);
-    border-radius: 9999px;
-}
-
-.pill-action-btn {
-    width: 34px;
-    height: 34px;
-    border-radius: 50%;
-    border: none;
-    background: transparent;
-    color: var(--primary-bright);
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.05rem;
-    transition: all 0.15s ease;
-    flex-shrink: 0;
-}
-
-.pill-action-btn:hover {
-    background-color: var(--sidebar-hover);
-}
-
-.message-text-input {
-    flex: 1;
-    border: none;
-    background: transparent;
-    padding: 0.38rem 0.25rem;
-    font-size: 0.92rem;
-    color: var(--text-primary);
-    outline: none;
-}
-
-.message-text-input::placeholder {
-    color: var(--text-muted);
-}
-
-.btn-quick-emoji {
-    width: 38px;
-    height: 38px;
-    border-radius: 50%;
-    border: none;
-    background: transparent;
-    font-size: 1.25rem;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    transition: transform 0.15s ease, background 0.15s ease;
-}
-
-.btn-quick-emoji:hover {
-    background: var(--sidebar-hover);
-    transform: scale(1.15);
-}
-
-.btn-send-pill {
-    width: 38px;
-    height: 38px;
-    border-radius: 50%;
-    border: none;
-    background: var(--bubble-sent-gradient);
-    color: #ffffff;
-    font-size: 0.92rem;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.15s ease;
-}
-
-.btn-send-pill:hover {
-    filter: brightness(1.08);
-    transform: scale(1.05);
-}
-
-/* Popover chọn Emoji */
-.emoji-popover {
-    position: absolute;
-    bottom: calc(100% - 0.25rem);
-    right: 3.5rem;
-    background: var(--surface-elevated);
-    border: 1px solid var(--border-color);
-    border-radius: 14px;
-    padding: 0.45rem;
-    display: flex;
-    gap: 0.2rem;
-    box-shadow: var(--shadow-md);
-    z-index: 20;
-}
-
-.emoji-item {
-    width: 34px;
-    height: 34px;
-    border: none;
-    background: transparent;
-    border-radius: 8px;
-    font-size: 1.15rem;
-    transition: transform 0.12s ease, background 0.12s ease;
-}
-
-.emoji-item:hover {
-    background: var(--sidebar-hover);
-    transform: scale(1.18);
+    background: var(--sidebar-card-bg);
+    color: var(--text-main);
 }
 
 /* ==========================================================================
-   5. NGĂN THÔNG TIN BÊN PHẢI & ĐỔI MÀU CHỦ ĐỀ (MESSENGER INFO DRAWER)
+   4. THANH NHẬP TIN NHẮN BO TRÒN + NÚT "GỬI" MÀU XANH ĐÚNG MẪU
+   ========================================================================== */
+.chat-input-area {
+    padding-top: 10px;
+    position: relative;
+    flex-shrink: 0;
+}
+
+.cs-composer-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background-color: #f8fafc;
+    border: 1px solid #d1dce8;
+    border-radius: 999px;
+    padding: 6px 8px 6px 14px;
+}
+
+body.dark-mode .cs-composer-bar {
+    background-color: #1e293b;
+    border-color: #334155;
+}
+
+.cs-composer-bar:focus-within {
+    border-color: var(--theme-color);
+    background-color: var(--window-bg);
+}
+
+.composer-tool-btn {
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 0.98rem;
+    padding: 4px 6px;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: color 0.15s ease;
+}
+
+.composer-tool-btn:hover {
+    color: var(--theme-color);
+}
+
+.cs-message-input {
+    flex: 1;
+    border: none;
+    background: transparent;
+    font-size: 0.9rem;
+    color: var(--text-main);
+    padding: 4px 6px;
+    outline: none;
+}
+
+.cs-message-input::placeholder {
+    color: #94a3b8;
+}
+
+.btn-cs-send {
+    border: none;
+    background-color: var(--theme-color);
+    color: #ffffff;
+    font-size: 0.86rem;
+    font-weight: 600;
+    padding: 7px 24px;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.btn-cs-send:hover {
+    background-color: var(--theme-hover);
+}
+
+/* ==========================================================================
+   5. NGĂN TÙY CHỌN BÊN PHẢI & CÁC POPUP / MODAL
    ========================================================================== */
 .chat-info-drawer {
-    width: 300px;
-    border-left: 1px solid var(--border-color);
-    background-color: var(--chat-bg);
-    overflow-y: auto;
-    padding: 1.25rem 0.9rem;
+    width: 270px;
+    flex-shrink: 0;
+    border-left: 1px solid var(--border-light);
+    margin-left: 16px;
+    padding-left: 14px;
     display: flex;
     flex-direction: column;
-    gap: 1.15rem;
-    flex-shrink: 0;
+    overflow-y: auto;
+}
+
+.drawer-header-title {
+    font-size: 0.9rem;
+    font-weight: 700;
+    padding: 6px 4px 10px 4px;
+    border-bottom: 1px solid var(--border-light);
 }
 
 .drawer-profile {
     text-align: center;
-    padding-bottom: 1rem;
-    border-bottom: 1px solid var(--border-color);
+    padding: 14px 6px;
+    border-bottom: 1px solid var(--border-light);
 }
 
-.drawer-profile .conv-avatar,
-.drawer-profile .conv-avatar-group {
-    width: 72px;
-    height: 72px;
+.drawer-profile .conv-avatar-circle {
+    width: 54px;
+    height: 54px;
+    font-size: 1.05rem;
     margin: 0 auto;
-    font-size: 1.35rem;
 }
 
 .drawer-title {
-    font-size: 1rem;
+    font-size: 0.98rem;
     font-weight: 700;
-    color: var(--text-primary);
 }
 
 .drawer-subtitle {
     font-size: 0.76rem;
-    color: var(--text-secondary);
+    color: var(--text-muted);
 }
 
 .drawer-quick-actions {
-    display: flex;
-    justify-content: center;
-    gap: 0.85rem;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
 }
 
 .drawer-quick-btn {
@@ -1603,459 +935,601 @@ html, body {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 0.35rem;
-    font-size: 0.71rem;
-    font-weight: 500;
-    color: var(--text-secondary);
+    gap: 4px;
+    font-size: 0.7rem;
+    color: var(--text-main);
+    cursor: pointer;
+    padding: 4px 2px;
 }
 
-.quick-icon {
-    width: 36px;
-    height: 36px;
+.drawer-quick-btn .quick-icon {
+    width: 32px;
+    height: 32px;
     border-radius: 50%;
-    background: var(--input-pill-bg);
-    color: var(--text-primary);
-    display: flex;
+    background: var(--sidebar-card-bg);
+    display: inline-flex;
     align-items: center;
     justify-content: center;
-    font-size: 0.88rem;
-    transition: all 0.15s ease;
+    font-size: 0.82rem;
 }
 
 .drawer-quick-btn:hover .quick-icon {
-    background: var(--primary-bright);
-    color: #ffffff;
-}
-
-/* Bảng chọn màu chủ đề (Theme Color Swatches) */
-.theme-color-swatches {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-.theme-swatch {
-    width: 28px;
-    height: 28px;
-    border-radius: 50%;
-    border: 2px solid transparent;
-    cursor: pointer;
-    transition: transform 0.15s ease;
-}
-
-.theme-swatch:hover {
-    transform: scale(1.12);
-}
-
-.theme-swatch.active {
-    outline: 2px solid var(--text-primary);
-    outline-offset: 2px;
+    background: var(--sidebar-item-active);
+    color: var(--theme-color);
 }
 
 .drawer-section {
-    display: flex;
-    flex-direction: column;
-    gap: 0.15rem;
+    padding: 10px 4px;
+    border-bottom: 1px solid var(--border-light);
 }
 
 .drawer-section-title {
-    font-size: 0.72rem;
+    font-size: 0.74rem;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.04em;
     color: var(--text-muted);
-    padding: 0 0.5rem 0.3rem;
+    margin-bottom: 6px;
+    padding: 0 6px;
+}
+
+.theme-color-swatches {
+    display: flex;
+    gap: 8px;
+}
+
+.theme-swatch {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    cursor: pointer;
+}
+
+.theme-swatch.active {
+    border-color: var(--text-main);
+    transform: scale(1.1);
 }
 
 .drawer-list-btn {
     width: 100%;
     border: none;
     background: transparent;
-    padding: 0.52rem 0.65rem;
-    border-radius: 8px;
     display: flex;
     align-items: center;
-    gap: 0.7rem;
+    gap: 10px;
+    padding: 7px 8px;
+    border-radius: 8px;
     font-size: 0.83rem;
-    font-weight: 500;
-    color: var(--text-primary);
+    color: var(--text-main);
+    cursor: pointer;
     text-align: left;
-    transition: background 0.15s ease;
-}
-
-.drawer-list-btn i {
-    width: 16px;
-    text-align: center;
 }
 
 .drawer-list-btn:hover {
-    background: var(--sidebar-hover);
+    background: var(--sidebar-card-bg);
 }
 
 .drawer-members-list {
     display: flex;
     flex-direction: column;
-    gap: 0.25rem;
-    margin-top: 0.25rem;
+    gap: 6px;
+    max-height: 160px;
+    overflow-y: auto;
 }
 
 .drawer-member-item {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 0.55rem;
-    padding: 0.4rem 0.55rem;
+    padding: 4px 6px;
     border-radius: 8px;
 }
 
-.drawer-member-item:hover {
-    background: var(--sidebar-hover);
-}
-
 .drawer-member-avatar {
-    width: 30px;
-    height: 30px;
+    width: 28px;
+    height: 28px;
     border-radius: 50%;
-    object-fit: cover;
 }
 
 .drawer-member-name {
     font-size: 0.8rem;
     font-weight: 600;
-    color: var(--text-primary);
 }
 
 .drawer-member-role {
-    font-size: 0.68rem;
+    font-size: 0.7rem;
     color: var(--text-muted);
 }
 
 .btn-remove-member {
     border: none;
     background: transparent;
-    color: var(--text-muted);
-    font-size: 0.75rem;
-    padding: 0.2rem 0.4rem;
-    border-radius: 6px;
-}
-
-.btn-remove-member:hover {
-    background: rgba(239, 68, 68, 0.12);
     color: #ef4444;
+    font-size: 0.78rem;
+    cursor: pointer;
 }
 
-/* ==========================================================================
-   6. MODALS (TẠO NHÓM, CUỘC GỌI, CÀI ĐẶT) & TOAST
-   ========================================================================== */
-.custom-modal-backdrop {
+/* Banner trả lời, đang nhập & chặn */
+.reply-preview-banner,
+.blocked-banner,
+.typing-indicator-bar {
+    padding: 8px 14px;
+    border-radius: 10px;
+    background: var(--sidebar-card-bg);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+    font-size: 0.82rem;
+}
+
+.reply-banner-title {
+    font-size: 0.75rem;
+    color: var(--theme-color);
+}
+
+.reply-banner-snippet {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.btn-unblock-pill {
+    border: none;
+    background: var(--theme-color);
+    color: #ffffff;
+    font-size: 0.76rem;
+    font-weight: 600;
+    padding: 4px 12px;
+    border-radius: 999px;
+    cursor: pointer;
+}
+
+/* Emoji Popover */
+.emoji-popover {
+    position: absolute;
+    bottom: 58px;
+    left: 10px;
+    background: var(--window-bg);
+    border: 1px solid var(--border-light);
+    border-radius: 12px;
+    padding: 6px 8px;
+    display: flex;
+    gap: 4px;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+    z-index: 50;
+}
+
+.emoji-item {
+    border: none;
+    background: transparent;
+    font-size: 1.2rem;
+    padding: 4px 6px;
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+.emoji-item:hover {
+    background: var(--sidebar-card-bg);
+}
+
+/* Menu ngữ cảnh (...) */
+.conv-context-menu {
+    position: fixed;
+    width: 210px;
+    background: var(--window-bg);
+    border: 1px solid var(--border-light);
+    border-radius: 12px;
+    padding: 6px;
+    box-shadow: 0 10px 28px rgba(15, 23, 42, 0.16);
+    z-index: 1050;
+}
+
+.context-menu-item {
+    width: 100%;
+    border: none;
+    background: transparent;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    font-size: 0.83rem;
+    color: var(--text-main);
+    cursor: pointer;
+    text-align: left;
+}
+
+.context-menu-item:hover {
+    background: var(--sidebar-card-bg);
+}
+
+.context-menu-divider {
+    margin: 4px 0;
+    border-color: var(--border-light);
+}
+
+/* Thông báo Popover */
+.notification-popover {
+    position: absolute;
+    top: 40px;
+    right: 0;
+    width: 310px;
+    background: var(--window-bg);
+    color: var(--text-main);
+    border: 1px solid var(--border-light);
+    border-radius: 12px;
+    box-shadow: 0 12px 30px rgba(15, 23, 42, 0.18);
+    z-index: 1000;
+    overflow: hidden;
+}
+
+.notif-header {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border-light);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 0.85rem;
+}
+
+.notif-list {
+    max-height: 280px;
+    overflow-y: auto;
+}
+
+.notif-item {
+    display: flex;
+    gap: 10px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border-light);
+    cursor: pointer;
+}
+
+.notif-item.unread {
+    background: var(--sidebar-card-bg);
+}
+
+.notif-item:hover {
+    background: var(--sidebar-item-hover);
+}
+
+.notif-text {
+    font-size: 0.8rem;
+}
+
+.notif-time {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    margin-top: 2px;
+}
+
+/* Modals (Tạo nhóm, Cài đặt, Đăng nhập, Cuộc gọi) */
+.custom-modal-backdrop,
+.auth-screen {
     position: fixed;
     inset: 0;
-    z-index: 2100;
-    background: rgba(15, 23, 42, 0.5);
-    backdrop-filter: blur(4px);
+    background: rgba(15, 23, 42, 0.45);
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 1rem;
+    z-index: 1100;
+    padding: 16px;
 }
 
-.custom-modal-card {
+.custom-modal-card,
+.auth-card {
     width: 100%;
-    max-width: 480px;
-    background: var(--surface-elevated);
-    border: 1px solid var(--border-color);
-    border-radius: 18px;
-    box-shadow: var(--shadow-lg);
+    max-width: 440px;
+    background: var(--window-bg);
+    color: var(--text-main);
+    border-radius: 14px;
+    box-shadow: 0 16px 40px rgba(15, 23, 42, 0.22);
     overflow: hidden;
-    animation: fadeInScale 0.2s ease-out;
 }
 
-.custom-modal-card.modal-lg-card {
-    max-width: 540px;
+.auth-card {
+    padding: 28px 26px;
+    text-align: center;
+}
+
+.brand-logo-circle {
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    background: var(--topbar-bg);
+    color: #ffffff;
+    font-weight: 700;
+    font-size: 1.1rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 10px;
+}
+
+.auth-title {
+    font-size: 1.35rem;
+    font-weight: 700;
+    margin-bottom: 4px;
+}
+
+.auth-subtitle {
+    font-size: 0.84rem;
+    color: var(--text-muted);
+    margin-bottom: 18px;
+}
+
+.btn-cs-primary {
+    border: none;
+    background: var(--theme-color);
+    color: #ffffff;
+    font-weight: 600;
+    font-size: 0.88rem;
+    padding: 9px 18px;
+    border-radius: 9px;
+    cursor: pointer;
+}
+
+.btn-cs-primary:hover {
+    background: var(--theme-hover);
+}
+
+.auth-divider {
+    margin: 14px 0;
+    font-size: 0.74rem;
+    color: var(--text-muted);
+}
+
+.btn-google-oauth {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    padding: 8px 14px;
+    border: 1px solid var(--border-light);
+    border-radius: 9px;
+    text-decoration: none;
+    color: var(--text-main);
+    font-size: 0.86rem;
+    font-weight: 500;
+}
+
+.btn-google-oauth:hover {
+    background: var(--sidebar-card-bg);
+}
+
+.saved-account-chip {
+    border: 1px solid var(--border-light);
+    background: var(--sidebar-card-bg);
+    color: var(--text-main);
+    border-radius: 999px;
+    padding: 4px 10px;
+    font-size: 0.76rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+}
+
+.saved-account-chip img {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
 }
 
 .custom-modal-header {
-    padding: 1rem 1.25rem;
-    border-bottom: 1px solid var(--border-color);
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border-light);
     display: flex;
     align-items: center;
     justify-content: space-between;
 }
 
 .custom-modal-body {
-    padding: 1.25rem;
-    max-height: 80vh;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-}
-
-/* Call Modal Card */
-.call-modal-card {
-    width: 100%;
-    max-width: 360px;
-    background: linear-gradient(160deg, #0f172a 0%, #1e293b 100%);
-    border-radius: 24px;
-    padding: 2.5rem 2rem;
-    text-align: center;
-    box-shadow: var(--shadow-lg);
-    animation: fadeInScale 0.2s ease-out;
-}
-
-.call-control-btn {
-    width: 52px;
-    height: 52px;
-    border-radius: 50%;
-    border: none;
-    background: rgba(255, 255, 255, 0.15);
-    color: #ffffff;
-    font-size: 1.15rem;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    transition: transform 0.15s ease;
-}
-
-.call-control-btn.end-call {
-    background: #ef4444;
-}
-
-.call-control-btn:hover {
-    transform: scale(1.08);
+    padding: 16px 18px;
 }
 
 .selected-member-chips {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.4rem;
-    min-height: 32px;
+    gap: 6px;
 }
 
 .member-chip {
+    background: var(--sidebar-item-active);
+    color: var(--theme-color);
+    font-size: 0.76rem;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 999px;
     display: inline-flex;
     align-items: center;
-    gap: 0.4rem;
-    padding: 0.25rem 0.6rem;
-    border-radius: 999px;
-    background: rgba(0, 132, 255, 0.1);
-    border: 1px solid rgba(0, 132, 255, 0.25);
-    color: var(--primary-bright);
-    font-size: 0.78rem;
-    font-weight: 600;
+    gap: 5px;
 }
 
 .member-chip button {
     border: none;
     background: transparent;
-    color: var(--primary-bright);
+    color: inherit;
     padding: 0;
-    font-size: 0.75rem;
-    line-height: 1;
+    cursor: pointer;
 }
 
 .contact-picker-list {
-    max-height: 220px;
+    max-height: 200px;
     overflow-y: auto;
-    border: 1px solid var(--border-color);
-    border-radius: 12px;
-    background: var(--sidebar-bg);
-    padding: 0.35rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.2rem;
+    border: 1px solid var(--border-light);
+    border-radius: 10px;
+    padding: 6px;
 }
 
 .contact-picker-item {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0.5rem 0.7rem;
-    border-radius: 9px;
+    padding: 7px 8px;
+    border-radius: 8px;
     cursor: pointer;
 }
 
-.contact-picker-item:hover {
-    background: var(--sidebar-hover);
-}
-
+.contact-picker-item:hover,
 .contact-picker-item.selected {
-    background: rgba(0, 132, 255, 0.08);
+    background: var(--sidebar-card-bg);
 }
 
+/* Cài đặt */
 .settings-profile-box {
     display: flex;
     align-items: center;
-    gap: 0.85rem;
-    padding: 0.85rem;
-    border-radius: 12px;
-    background: var(--sidebar-bg);
-    border: 1px solid var(--border-color);
+    padding: 10px 12px;
+    background: var(--sidebar-card-bg);
+    border-radius: 10px;
+    margin-bottom: 14px;
 }
 
 .settings-group {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
+    margin-bottom: 12px;
 }
 
 .settings-group-title {
-    font-size: 0.74rem;
+    font-size: 0.76rem;
     font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
     color: var(--text-muted);
+    margin-bottom: 6px;
 }
 
 .settings-row {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 1rem;
-    padding: 0.65rem 0.75rem;
-    border-radius: 10px;
-    border: 1px solid var(--border-color);
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border-light);
     cursor: pointer;
 }
 
 .settings-label {
-    font-size: 0.86rem;
+    font-size: 0.85rem;
     font-weight: 600;
-    color: var(--text-primary);
 }
 
 .settings-desc {
     font-size: 0.74rem;
-    color: var(--text-secondary);
-}
-
-.settings-switch {
-    width: 2.2rem !important;
-    height: 1.2rem !important;
-    cursor: pointer;
-}
-
-.blocked-users-list {
-    display: flex;
-    flex-direction: column;
-    gap: 0.45rem;
+    color: var(--text-muted);
 }
 
 .blocked-user-row {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0.55rem 0.75rem;
-    border-radius: 10px;
-    background: var(--sidebar-bg);
-    border: 1px solid var(--border-color);
-    font-size: 0.83rem;
+    padding: 6px 0;
+    font-size: 0.82rem;
 }
 
+/* Modal Cuộc gọi */
+.call-modal-card {
+    width: 320px;
+    background: var(--topbar-bg);
+    padding: 28px 20px;
+    border-radius: 16px;
+    text-align: center;
+}
+
+.call-control-btn {
+    width: 46px;
+    height: 46px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(255, 255, 255, 0.15);
+    color: #ffffff;
+    font-size: 1rem;
+    cursor: pointer;
+}
+
+.call-control-btn.end-call {
+    background: #ef4444;
+}
+
+/* Trạng thái trống */
+.empty-chat-state {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+}
+
+.empty-icon-circle {
+    width: 68px;
+    height: 68px;
+    border-radius: 50%;
+    background: var(--sidebar-card-bg);
+    color: var(--theme-color);
+    font-size: 1.7rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 12px;
+}
+
+.empty-title {
+    font-size: 1.15rem;
+    font-weight: 700;
+}
+
+.empty-description {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    max-width: 320px;
+    margin: 0 auto 14px auto;
+}
+
+.btn-link-xs {
+    border: none;
+    background: transparent;
+    color: var(--theme-color);
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+/* Toast góc dưới phải */
 .chat-toast-container {
     position: fixed;
-    bottom: 1.25rem;
-    right: 1.25rem;
-    z-index: 2500;
+    bottom: 24px;
+    right: 28px;
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: 8px;
+    z-index: 1200;
 }
 
 .chat-toast {
-    background: #0f172a;
+    background: var(--topbar-bg);
     color: #ffffff;
-    padding: 0.65rem 1rem;
+    padding: 10px 16px;
     border-radius: 10px;
-    font-size: 0.82rem;
-    font-weight: 500;
-    box-shadow: var(--shadow-md);
+    font-size: 0.83rem;
     display: flex;
     align-items: center;
-    gap: 0.55rem;
-    animation: messageSlideUp 0.2s ease-out;
+    gap: 8px;
+    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.2);
 }
 
-.conversation-list::-webkit-scrollbar,
-.chat-log::-webkit-scrollbar,
-.chat-info-drawer::-webkit-scrollbar,
-.contact-picker-list::-webkit-scrollbar {
-    width: 5px;
-}
-
-.conversation-list::-webkit-scrollbar-thumb,
-.chat-log::-webkit-scrollbar-thumb,
-.chat-info-drawer::-webkit-scrollbar-thumb,
-.contact-picker-list::-webkit-scrollbar-thumb {
-    background-color: #cbd5e1;
-    border-radius: 999px;
-}
-
-@keyframes messageSlideUp {
-    from {
-        opacity: 0;
-        transform: translateY(6px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
-@keyframes fadeInScale {
-    from {
-        opacity: 0;
-        transform: scale(0.97);
-    }
-    to {
-        opacity: 1;
-        transform: scale(1);
-    }
-}
-
-/* ==========================================================================
-   7. RESPONSIVE (ĐIỆN THOẠI & TABLET)
-   ========================================================================== */
-@media (max-width: 991.98px) {
-    .chat-info-drawer {
-        position: absolute;
-        top: 68px;
-        right: 0;
-        bottom: 0;
-        z-index: 50;
-        box-shadow: var(--shadow-lg);
-    }
-}
-
+/* Đáp ứng màn hình nhỏ (Mobile) */
 @media (max-width: 767.98px) {
-    .messenger-nav-rail {
+    .chatspace-viewport {
+        padding: 0;
+    }
+    .chatspace-window {
+        border-radius: 0;
+    }
+    .sidebar-card {
+        width: 100%;
+    }
+    .chatspace-window:not(.mobile-chat-active) .chat-main-panel {
         display: none;
     }
-
-    .sidebar-panel {
-        width: 100%;
-        max-width: 100%;
-        min-width: 100%;
-    }
-
-    .chat-main-panel {
-        position: fixed;
-        inset: 0;
-        width: 100%;
-        z-index: 100;
-        transform: translateX(100%);
-        transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
-    }
-
-    .chat-layout.mobile-chat-active .chat-main-panel {
-        transform: translateX(0);
-    }
-
-    .message-row {
-        max-width: 86%;
-    }
-
-    .subscription-path {
+    .chatspace-window.mobile-chat-active .sidebar-card {
         display: none;
     }
 }

@@ -9,25 +9,54 @@
 // 1. TÀI KHOẢN NGƯỜI DÙNG, DANH BẠ & KHO LƯU TRỮ DỮ LIỆU
 // --------------------------------------------------------------------------
 const STORAGE_KEYS = {
-    TAB_USER: 'chatspace_tab_user_v1',
-    CONVERSATIONS: 'chatspace_conversations_v1',
-    CONTACTS: 'chatspace_contacts_v1'
+    TAB_USER: 'chatspace_tab_user_v2',
+    CONVERSATIONS: 'chatspace_conversations_v2',
+    CONTACTS: 'chatspace_contacts_v2'
 };
 
-// Danh sách tài khoản thành viên mặc định
+// Danh sách tài khoản thành viên mặc định khớp với mẫu thiết kế ChatSpace
 const DEFAULT_ACCOUNTS = [
     {
         id: 'user-duc',
         name: 'Nguyễn Minh Đức',
         shortName: 'Minh Đức',
+        initials: 'MĐ',
         email: 'minhduchd20059b@gmail.com',
         online: true,
-        avatar: 'https://ui-avatars.com/api/?name=Minh+Duc&background=0084ff&color=fff&bold=true'
+        avatar: 'https://ui-avatars.com/api/?name=Minh+Duc&background=1d72b8&color=fff&bold=true'
+    },
+    {
+        id: 'user-an',
+        name: 'An Nguyễn',
+        shortName: 'An Nguyễn',
+        initials: 'AN',
+        email: 'annguyen.hau@gmail.com',
+        online: true,
+        avatar: 'https://ui-avatars.com/api/?name=An+Nguyen&background=1d72b8&color=fff&bold=true'
+    },
+    {
+        id: 'user-minh',
+        name: 'Bình Minh',
+        shortName: 'Bình Minh',
+        initials: 'BM',
+        email: 'binhminh.ltm@gmail.com',
+        online: true,
+        avatar: 'https://ui-avatars.com/api/?name=Binh+Minh&background=64748b&color=fff&bold=true'
+    },
+    {
+        id: 'user-linh',
+        name: 'Quỳnh Linh',
+        shortName: 'Quỳnh Linh',
+        initials: 'QL',
+        email: 'quynhlinh.cntt@gmail.com',
+        online: true,
+        avatar: 'https://ui-avatars.com/api/?name=Quynh+Linh&background=64748b&color=fff&bold=true'
     },
     {
         id: 'user-ha',
         name: 'Trần Thu Hà',
         shortName: 'Thu Hà',
+        initials: 'TH',
         email: 'thuha.hau@gmail.com',
         online: true,
         avatar: 'https://ui-avatars.com/api/?name=Thu+Ha&background=0ea5e9&color=fff&bold=true'
@@ -36,33 +65,10 @@ const DEFAULT_ACCOUNTS = [
         id: 'user-nam',
         name: 'Lê Hoàng Nam',
         shortName: 'Hoàng Nam',
+        initials: 'HN',
         email: 'hoangnam.dev@gmail.com',
-        online: true,
-        avatar: 'https://ui-avatars.com/api/?name=Hoang+Nam&background=8b5cf6&color=fff&bold=true'
-    },
-    {
-        id: 'user-khanh',
-        name: 'Vũ Quốc Khánh',
-        shortName: 'Quốc Khánh',
-        email: 'quockhanh.sb@gmail.com',
-        online: true,
-        avatar: 'https://ui-avatars.com/api/?name=Quoc+Khanh&background=10b981&color=fff&bold=true'
-    },
-    {
-        id: 'user-linh',
-        name: 'Đỗ Phương Linh',
-        shortName: 'Phương Linh',
-        email: 'phuonglinh.cntt@gmail.com',
-        online: true,
-        avatar: 'https://ui-avatars.com/api/?name=Phuong+Linh&background=ec4899&color=fff&bold=true'
-    },
-    {
-        id: 'user-tung',
-        name: 'Phạm Thanh Tùng',
-        shortName: 'Thanh Tùng',
-        email: 'thanhtung.ltm@gmail.com',
         online: false,
-        avatar: 'https://ui-avatars.com/api/?name=Thanh+Tung&background=64748b&color=fff&bold=true'
+        avatar: 'https://ui-avatars.com/api/?name=Hoang+Nam&background=64748b&color=fff&bold=true'
     }
 ];
 
@@ -77,12 +83,13 @@ const USER_SETTINGS = {
 };
 
 const THEME_PRESETS = {
-    '#0084ff': 'linear-gradient(135deg, #0084ff 0%, #0062ff 100%)',
-    '#7c3aed': 'linear-gradient(135deg, #7c3aed 0%, #ec4899 100%)',
-    '#e11d48': 'linear-gradient(135deg, #e11d48 0%, #fb7185 100%)',
-    '#0d9488': 'linear-gradient(135deg, #0d9488 0%, #2dd4bf 100%)',
-    '#ea580c': 'linear-gradient(135deg, #ea580c 0%, #f59e0b 100%)',
-    '#1e293b': 'linear-gradient(135deg, #0f172a 0%, #334155 100%)'
+    '#1d72b8': '#1d72b8',
+    '#3797f0': '#1d72b8',
+    '#0084ff': '#1d72b8',
+    '#0d9488': '#0d9488',
+    '#6366f1': '#6366f1',
+    '#e11d48': '#e11d48',
+    '#334155': '#334155'
 };
 
 const QUICK_EMOJI_CYCLE = ['👍', '❤️', '🔥', '🎉', '🚀', '👏'];
@@ -92,83 +99,75 @@ let CONTACTS_DIRECTORY = loadContactsDirectory();
 const NOTIFICATIONS = [
     {
         id: 'notif-1',
-        conversationId: 'room-team-ltm',
-        title: 'Nhóm Đồ Án Lập Trình Mạng',
-        content: 'Lê Hoàng Nam đã gửi tin nhắn mới trong nhóm.',
-        time: 'Vừa xong',
+        conversationId: 'conv-an-nguyen',
+        title: 'An Nguyễn',
+        content: 'Giờ kiểm thử chat nhóm và deploy nhé.',
+        time: '10:43',
         unread: true
     },
     {
         id: 'notif-2',
-        conversationId: 'conv-thu-ha',
-        title: 'Trần Thu Hà',
-        content: 'Đã thả ❤️ vào tin nhắn của bạn.',
-        time: '5 phút trước',
+        conversationId: 'room-lap-trinh-mang',
+        title: 'Nhóm Lập trình mạng',
+        content: 'Đã gửi bản demo lên hệ thống.',
+        time: '10:30',
         unread: true
     }
 ];
 
 const INITIAL_CONVERSATIONS = [
     {
-        id: 'room-team-ltm',
-        name: 'Nhóm Đồ Án Lập Trình Mạng',
-        type: 'GROUP',
-        roomId: 'room-team-ltm',
+        id: 'conv-an-nguyen',
+        contactId: 'user-an',
+        participants: ['user-duc', 'user-an'],
+        name: 'An Nguyễn',
+        type: 'DIRECT',
+        roomId: null,
         online: true,
-        statusText: '4 thành viên • 3 đang hoạt động',
+        statusText: 'Đang hoạt động',
         unreadCount: 0,
-        pinned: true,
+        pinned: false,
         muted: false,
         archived: false,
         blocked: false,
-        themeColor: '#0084ff',
+        themeColor: '#1d72b8',
         quickEmoji: '👍',
-        avatarText: 'LTM',
-        sharedFiles: ['So_Do_Kien_Truc_WebSocket.pdf'],
-        members: [
-            { ...DEFAULT_ACCOUNTS[0], role: 'Trưởng nhóm' },
-            { ...DEFAULT_ACCOUNTS[1], role: 'Thành viên' },
-            { ...DEFAULT_ACCOUNTS[2], role: 'Thành viên' },
-            { ...DEFAULT_ACCOUNTS[5], role: 'Thành viên' }
-        ],
+        avatarText: 'AN',
+        sharedFiles: [],
+        avatar: 'https://ui-avatars.com/api/?name=An+Nguyen&background=1d72b8&color=fff&bold=true',
         messages: [
             {
                 id: 'm-1',
-                senderId: 'user-ha',
-                senderName: 'Trần Thu Hà',
-                senderAvatar: 'https://ui-avatars.com/api/?name=Thu+Ha&background=0ea5e9&color=fff',
-                content: 'Mọi người ơi, hệ thống đã sẵn sàng kết nối WebSocket STOMP qua endpoint /ws rồi nhé!',
-                reaction: '👍',
-                timestamp: '2026-11-02T08:40:00.000Z'
+                senderId: 'user-an',
+                senderName: 'An Nguyễn',
+                content: 'Chào bạn, phần WebSocket chạy ổn rồi!',
+                timestamp: '2026-11-03T03:42:00.000Z',
+                displayTime: '10:42'
             },
             {
                 id: 'm-2',
                 senderId: 'user-duc',
                 senderName: 'Nguyễn Minh Đức',
-                senderAvatar: 'https://ui-avatars.com/api/?name=Minh+Duc&background=0084ff&color=fff&bold=true',
-                content: 'Mọi người có thể mở 2 tab trình duyệt, đăng nhập 2 tài khoản khác nhau để nhắn tin qua lại trực tiếp theo thời gian thực nhé.',
-                reaction: '❤️',
-                timestamp: '2026-11-02T08:42:15.000Z'
+                content: 'Tuyệt! Mình đã đăng nhập bằng Google.',
+                timestamp: '2026-11-03T03:43:00.000Z',
+                displayTime: '10:43'
             },
             {
                 id: 'm-3',
-                senderId: 'user-nam',
-                senderName: 'Lê Hoàng Nam',
-                senderAvatar: 'https://ui-avatars.com/api/?name=Hoang+Nam&background=8b5cf6&color=fff',
-                content: 'Tuyệt vời! Mình vừa thử thả cảm xúc và trả lời tin nhắn, đồng bộ ngay lập tức luôn.',
-                replyTo: {
-                    senderName: 'Nguyễn Minh Đức',
-                    content: 'Mọi người có thể mở 2 tab trình duyệt, đăng nhập 2 tài khoản khác nhau...'
-                },
-                timestamp: '2026-11-02T08:45:00.000Z'
+                senderId: 'user-an',
+                senderName: 'An Nguyễn',
+                content: 'Giờ kiểm thử chat nhóm và deploy nhé.',
+                timestamp: '2026-11-03T03:43:30.000Z',
+                displayTime: '10:43',
+                sidebarPreview: 'Mình nhận được rồi nhé'
             }
         ]
     },
     {
-        id: 'conv-thu-ha',
-        contactId: 'user-ha',
-        participants: ['user-duc', 'user-ha'],
-        name: 'Trần Thu Hà',
+        id: 'conv-binh-minh',
+        contactId: 'user-minh',
+        participants: ['user-duc', 'user-minh'],
+        name: 'Bình Minh',
         type: 'DIRECT',
         roomId: null,
         online: true,
@@ -178,96 +177,90 @@ const INITIAL_CONVERSATIONS = [
         muted: false,
         archived: false,
         blocked: false,
-        themeColor: '#7c3aed',
-        quickEmoji: '❤️',
+        themeColor: '#1d72b8',
+        quickEmoji: '👍',
+        avatarText: 'BM',
         sharedFiles: [],
-        avatar: 'https://ui-avatars.com/api/?name=Thu+Ha&background=0ea5e9&color=fff&bold=true',
+        avatar: 'https://ui-avatars.com/api/?name=Binh+Minh&background=64748b&color=fff&bold=true',
         messages: [
             {
                 id: 'm-101',
-                senderId: 'user-ha',
-                senderName: 'Trần Thu Hà',
-                senderAvatar: 'https://ui-avatars.com/api/?name=Thu+Ha&background=0ea5e9&color=fff',
-                content: 'Đức ơi, cậu kiểm tra phần giao diện Messenger mới chưa?',
-                timestamp: '2026-11-02T09:10:00.000Z'
-            },
-            {
-                id: 'm-102',
-                senderId: 'user-duc',
-                senderName: 'Nguyễn Minh Đức',
-                senderAvatar: 'https://ui-avatars.com/api/?name=Minh+Duc&background=0084ff&color=fff&bold=true',
-                content: 'Tớ vừa hoàn thiện xong, giờ mở thêm 1 tab nữa đăng nhập tài khoản của Hà là 2 bên chat realtime thật với nhau được luôn!',
-                reaction: '😮',
-                timestamp: '2026-11-02T09:12:30.000Z'
+                senderId: 'user-minh',
+                senderName: 'Bình Minh',
+                content: 'Cuộc họp nhóm lúc 20:00',
+                timestamp: '2026-11-03T02:15:00.000Z',
+                displayTime: '09:15'
             }
         ]
     },
     {
-        id: 'conv-hoang-nam',
-        contactId: 'user-nam',
-        participants: ['user-duc', 'user-nam'],
-        name: 'Lê Hoàng Nam',
+        id: 'room-lap-trinh-mang',
+        name: 'Nhóm Lập trình mạng',
+        type: 'GROUP',
+        roomId: 'room-lap-trinh-mang',
+        online: true,
+        statusText: '4 thành viên • Đang hoạt động',
+        unreadCount: 0,
+        pinned: false,
+        muted: false,
+        archived: false,
+        blocked: false,
+        themeColor: '#1d72b8',
+        quickEmoji: '👍',
+        avatarText: 'GR',
+        sharedFiles: ['Bao_Cao_WebSocket_STOMP.pdf'],
+        members: [
+            { ...DEFAULT_ACCOUNTS[0], role: 'Trưởng nhóm' },
+            { ...DEFAULT_ACCOUNTS[1], role: 'Thành viên' },
+            { ...DEFAULT_ACCOUNTS[2], role: 'Thành viên' },
+            { ...DEFAULT_ACCOUNTS[3], role: 'Thành viên' }
+        ],
+        messages: [
+            {
+                id: 'm-201',
+                senderId: 'user-an',
+                senderName: 'An Nguyễn',
+                content: 'Mọi người kiểm tra kết nối STOMP /ws và kênh nhóm /topic/room/{roomId} nhé.',
+                timestamp: '2026-11-03T02:00:00.000Z',
+                displayTime: '09:00'
+            },
+            {
+                id: 'm-202',
+                senderId: 'user-minh',
+                senderName: 'Bình Minh',
+                content: 'Đã gửi bản demo',
+                timestamp: '2026-11-03T02:05:00.000Z',
+                displayTime: '09:05'
+            }
+        ]
+    },
+    {
+        id: 'conv-quynh-linh',
+        contactId: 'user-linh',
+        participants: ['user-duc', 'user-linh'],
+        name: 'Quỳnh Linh',
         type: 'DIRECT',
         roomId: null,
         online: true,
         statusText: 'Đang hoạt động',
         unreadCount: 0,
         pinned: false,
-        muted: true,
-        archived: false,
-        blocked: false,
-        themeColor: '#0084ff',
-        quickEmoji: '🔥',
-        sharedFiles: [],
-        avatar: 'https://ui-avatars.com/api/?name=Hoang+Nam&background=8b5cf6&color=fff&bold=true',
-        messages: [
-            {
-                id: 'm-201',
-                senderId: 'user-nam',
-                senderName: 'Lê Hoàng Nam',
-                senderAvatar: 'https://ui-avatars.com/api/?name=Hoang+Nam&background=8b5cf6&color=fff',
-                content: 'Tối nay 8h nhóm mình ghép phần kết nối MySQL nhé.',
-                timestamp: '2026-11-02T07:30:00.000Z'
-            },
-            {
-                id: 'm-202',
-                senderId: 'user-duc',
-                senderName: 'Nguyễn Minh Đức',
-                senderAvatar: 'https://ui-avatars.com/api/?name=Minh+Duc&background=0084ff&color=fff&bold=true',
-                content: 'Ok Nam, mình đã chuẩn bị sẵn file cấu hình rồi.',
-                timestamp: '2026-11-02T07:35:10.000Z'
-            }
-        ]
-    },
-    {
-        id: 'room-spring-websocket',
-        name: 'CLB Backend Spring Boot',
-        type: 'GROUP',
-        roomId: 'room-spring-websocket',
-        online: true,
-        statusText: '4 thành viên • 3 đang hoạt động',
-        unreadCount: 0,
-        pinned: false,
         muted: false,
         archived: false,
         blocked: false,
-        themeColor: '#0d9488',
-        quickEmoji: '🚀',
-        avatarText: 'SB',
+        themeColor: '#1d72b8',
+        quickEmoji: '❤️',
+        avatarText: 'QL',
         sharedFiles: [],
-        members: [
-            { ...DEFAULT_ACCOUNTS[0], role: 'Trưởng nhóm' },
-            { ...DEFAULT_ACCOUNTS[3], role: 'Thành viên' },
-            { ...DEFAULT_ACCOUNTS[4], role: 'Thành viên' }
-        ],
+        avatar: 'https://ui-avatars.com/api/?name=Quynh+Linh&background=64748b&color=fff&bold=true',
         messages: [
             {
                 id: 'm-301',
-                senderId: 'user-khanh',
-                senderName: 'Vũ Quốc Khánh',
-                senderAvatar: 'https://ui-avatars.com/api/?name=Quoc+Khanh&background=10b981&color=fff',
-                content: 'Khi gửi tin nhắn qua STOMP, mọi người dùng stompClient.send("/app/chat.send", {}, JSON.stringify(payload)) nhé.',
-                timestamp: '2026-11-01T16:20:00.000Z'
+                senderId: 'user-linh',
+                senderName: 'Quỳnh Linh',
+                content: 'Cảm ơn bạn!',
+                timestamp: '2026-11-03T01:30:00.000Z',
+                displayTime: '08:30'
             }
         ]
     }
@@ -578,18 +571,29 @@ function handleIncomingSocketMessage(payload) {
 // 3. ĐĂNG NHẬP TÀI KHOẢN THỰC TẾ (HỖ TRỢ ĐA TAB)
 // --------------------------------------------------------------------------
 
+function getInitials(name, customText) {
+    if (customText && customText.trim()) return customText.trim().substring(0, 3).toUpperCase();
+    if (!name) return 'CS';
+    const parts = name.trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
 function updateCurrentUserProfileUI() {
-    const railAvatar = document.getElementById('railCurrentUserAvatar');
-    const settingsAvatar = document.getElementById('settingsUserAvatar');
+    const topbarInitials = document.getElementById('topbarUserInitials');
+    const sidebarUsername = document.getElementById('sidebarCurrentUsername');
+    const settingsInitials = document.getElementById('settingsUserInitials');
     const settingsName = document.getElementById('settingsUserName');
     const settingsEmail = document.getElementById('settingsUserEmail');
 
-    if (railAvatar) railAvatar.src = CURRENT_USER.avatar;
-    if (settingsAvatar) settingsAvatar.src = CURRENT_USER.avatar;
+    const initials = getInitials(CURRENT_USER.name, CURRENT_USER.initials);
+    if (topbarInitials) topbarInitials.textContent = initials;
+    if (sidebarUsername) sidebarUsername.textContent = CURRENT_USER.shortName || CURRENT_USER.name;
+    if (settingsInitials) settingsInitials.textContent = initials;
     if (settingsName) settingsName.textContent = CURRENT_USER.name;
     if (settingsEmail) settingsEmail.textContent = CURRENT_USER.email;
 
-    document.title = `${CURRENT_USER.name} — ChatSpace Messenger`;
+    document.title = `CHATSPACE — ${CURRENT_USER.name}`;
 }
 
 function renderSavedAccountsOnAuthScreen() {
@@ -714,14 +718,14 @@ function unsendMessage(messageId) {
 
 function applyConversationTheme(colorHex) {
     const conv = getConversationById(activeConversationId);
-    const themeColor = colorHex || conv?.themeColor || '#0084ff';
-    const gradient = THEME_PRESETS[themeColor] || THEME_PRESETS['#0084ff'];
+    const rawColor = colorHex || conv?.themeColor || '#1d72b8';
+    const normalizedColor =
+        rawColor === '#0084ff' || rawColor === '#3797f0' ? '#1d72b8' : rawColor;
 
-    document.documentElement.style.setProperty('--theme-color', themeColor);
-    document.documentElement.style.setProperty('--theme-gradient', gradient);
+    document.documentElement.style.setProperty('--theme-color', normalizedColor);
 
     document.querySelectorAll('#themeColorSwatches .theme-swatch').forEach((btn) => {
-        btn.classList.toggle('active', btn.getAttribute('data-theme-color') === themeColor);
+        btn.classList.toggle('active', btn.getAttribute('data-theme-color') === normalizedColor);
     });
 }
 
@@ -959,17 +963,24 @@ function handleGroupModalSubmit(event) {
         const groupAvatarTextInput = document.getElementById('groupAvatarTextInput');
         const groupTopicDescInput = document.getElementById('groupTopicDescInput');
 
-        const groupName = groupNameInput.value.trim();
-        if (!groupName) {
-            showToast('Vui lòng nhập tên nhóm chat!', 'fa-triangle-exclamation');
-            groupNameInput.focus();
+        if (selectedContacts.length === 0) {
+            showToast('Vui lòng chọn ít nhất 1 người nhận!', 'fa-users');
             return;
         }
 
-        if (selectedContacts.length === 0) {
-            showToast('Vui lòng chọn ít nhất 1 thành viên để tạo nhóm!', 'fa-users');
+        const rawGroupName = groupNameInput.value.trim();
+
+        // Nếu chỉ chọn 1 người và không đặt tên nhóm -> Mở chat cá nhân 1-1 chuẩn Instagram Direct
+        if (selectedContacts.length === 1 && !rawGroupName) {
+            closeGroupModal();
+            openOrCreateDirectConversation(selectedContacts[0].id);
             return;
         }
+
+        // Nếu chọn từ 2 người trở lên mà chưa nhập tên nhóm -> Tự tạo tên nhóm từ tên các thành viên
+        const groupName =
+            rawGroupName ||
+            [CURRENT_USER.shortName || CURRENT_USER.name, ...selectedContacts.map((c) => c.shortName || c.name)].join(', ');
 
         const customAvatarText = groupAvatarTextInput.value.trim().toUpperCase();
         const generatedInitials =
@@ -1242,7 +1253,9 @@ function renderActiveNowStrip() {
             (c) => `
         <div class="active-person-item" data-active-contact-id="${c.id}" title="Nhắn tin với ${escapeHtml(c.name)}">
             <div class="avatar-wrapper">
-                <img src="${c.avatar}" alt="${escapeHtml(c.name)}" class="active-person-avatar">
+                <div class="ig-story-ring">
+                    <img src="${c.avatar}" alt="${escapeHtml(c.name)}" class="active-person-avatar">
+                </div>
                 <span class="status-dot online"></span>
             </div>
             <span class="active-person-name">${escapeHtml(c.shortName || c.name)}</span>
@@ -1340,7 +1353,7 @@ function renderConversationList() {
                 : 'Không tìm thấy cuộc trò chuyện phù hợp';
         listEl.innerHTML = `
             <div class="text-center text-muted py-5 px-3">
-                <i class="fa-brands fa-facebook-messenger fs-3 mb-2 d-block opacity-50"></i>
+                <i class="fa-regular fa-paper-plane fs-3 mb-2 d-block opacity-50"></i>
                 <div class="small">${emptyMsg}</div>
             </div>
         `;
@@ -1352,22 +1365,19 @@ function renderConversationList() {
             const isActive = conv.id === activeConversationId;
             const isUnread = conv.unreadCount > 0;
             const displayName = getDisplayConversationName(conv);
-            const displayAvatar = getDisplayConversationAvatar(conv);
             const lastMessage = conv.messages[conv.messages.length - 1];
-            const lastText = lastMessage
-                ? (lastMessage.senderId === CURRENT_USER.id ? 'Bạn: ' : '') +
-                  escapeHtml(lastMessage.content || 'Đã gửi một hình ảnh')
+            const previewText = lastMessage
+                ? lastMessage.sidebarPreview
+                    ? escapeHtml(lastMessage.sidebarPreview)
+                    : escapeHtml(lastMessage.content || 'Đã gửi một hình ảnh')
                 : 'Bắt đầu cuộc trò chuyện';
-            const lastTime = lastMessage ? formatShortTime(lastMessage.timestamp) : '';
 
-            const avatarHtml =
+            const initialsText =
                 conv.type === 'GROUP'
-                    ? `<div class="conv-avatar-group">${escapeHtml(conv.avatarText || 'GR')}</div>`
-                    : `<img src="${displayAvatar}" alt="${escapeHtml(displayName)}" class="conv-avatar">`;
+                    ? conv.avatarText || 'GR'
+                    : getInitials(displayName, conv.avatarText);
 
-            const statusDotHtml = `
-                <span class="status-dot ${conv.online && !conv.blocked ? 'online' : ''}"></span>
-            `;
+            const avatarHtml = `<div class="conv-avatar-circle ${isActive ? 'active-avatar' : ''}">${escapeHtml(initialsText)}</div>`;
 
             const pinIconHtml = conv.pinned
                 ? `<i class="fa-solid fa-thumbtack conv-flag-icon pinned" title="Đã ghim"></i>`
@@ -1393,7 +1403,6 @@ function renderConversationList() {
                      data-conversation-id="${conv.id}">
                     <div class="avatar-wrapper">
                         ${avatarHtml}
-                        ${statusDotHtml}
                     </div>
                     <div class="conv-content">
                         <div class="conv-top-row">
@@ -1403,17 +1412,16 @@ function renderConversationList() {
                                 ${muteIconHtml}
                                 ${blockedIconHtml}
                             </div>
-                            <span class="conv-time">${lastTime}</span>
                         </div>
                         <div class="conv-bottom-row">
-                            <span class="conv-last-msg">${lastText}</span>
+                            <span class="conv-last-msg">${previewText}</span>
                             ${unreadBadgeHtml}
                         </div>
                     </div>
                     <button type="button"
                             class="conv-more-btn"
                             data-more-conv-id="${conv.id}"
-                            title="Tùy chọn đoạn chat">
+                            title="Tùy chọn hội thoại">
                         <i class="fa-solid fa-ellipsis"></i>
                     </button>
                 </div>
@@ -1485,15 +1493,19 @@ function updateActiveChatHeaderAndDrawer(conv) {
 
     const isGroup = conv.type === 'GROUP';
     const displayName = getDisplayConversationName(conv);
-    const displayAvatar = getDisplayConversationAvatar(conv);
+    const initialsText = isGroup
+        ? conv.avatarText || 'GR'
+        : getInitials(displayName, conv.avatarText);
 
-    const avatarHtml = isGroup
-        ? `<div class="conv-avatar-group">${escapeHtml(conv.avatarText || 'GR')}</div>`
-        : `<img src="${displayAvatar}" alt="${escapeHtml(displayName)}" class="conv-avatar">`;
+    const avatarHtml = `<div class="conv-avatar-circle active-avatar">${escapeHtml(initialsText)}</div>`;
 
-    document.getElementById('chatHeaderAvatarWrapper').innerHTML = avatarHtml;
+    const headerAvatarWrap = document.getElementById('chatHeaderAvatarWrapper');
+    if (headerAvatarWrap) headerAvatarWrap.innerHTML = avatarHtml;
     document.getElementById('chatHeaderName').textContent = displayName;
-    document.getElementById('chatHeaderBadge').textContent = isGroup ? 'Nhóm chat' : 'Cá nhân';
+    const headerBadgeEl = document.getElementById('chatHeaderBadge');
+    if (headerBadgeEl) {
+        headerBadgeEl.textContent = isGroup ? 'Nhóm chat' : 'Cá nhân';
+    }
     document.getElementById('chatHeaderStatusText').textContent = conv.blocked
         ? 'Đã chặn'
         : conv.statusText;
@@ -1503,7 +1515,7 @@ function updateActiveChatHeaderAndDrawer(conv) {
     document.getElementById('btnHeaderAddMember').classList.toggle('d-none', !isGroup);
 
     const headerDot = document.getElementById('chatHeaderDot');
-    headerDot.className = conv.online && !conv.blocked ? 'status-dot online pulse' : 'status-dot';
+    headerDot.className = conv.online && !conv.blocked ? 'status-dot online' : 'status-dot';
 
     if (isGroup && conv.roomId) {
         subscribeToRoomTopic(conv.roomId);
@@ -1511,10 +1523,6 @@ function updateActiveChatHeaderAndDrawer(conv) {
 
     document.getElementById('blockedBanner').classList.toggle('d-none', !conv.blocked);
     document.getElementById('chatInputFooter').classList.toggle('d-none', conv.blocked);
-
-    const quickEmoji = conv.quickEmoji || '👍';
-    document.getElementById('btnQuickReactionSend').textContent = quickEmoji;
-    document.getElementById('drawerCurrentEmojiIcon').textContent = quickEmoji;
 
     document.getElementById('drawerAvatar').innerHTML = avatarHtml;
     document.getElementById('drawerName').textContent = displayName;
@@ -1605,7 +1613,7 @@ function renderMessages(conversation) {
 
     if (visibleMessages.length === 0) {
         chatLogEl.innerHTML = `
-            <div class="text-center text-muted my-auto py-5">
+            <div class="text-center text-muted my-auto py-4">
                 <div class="small">Hãy gửi tin nhắn đầu tiên để bắt đầu trò chuyện!</div>
             </div>
         `;
@@ -1616,13 +1624,7 @@ function renderMessages(conversation) {
         .map((msg) => {
             const isSentByMe = msg.senderId === CURRENT_USER.id;
             const rowClass = isSentByMe ? 'sent' : 'received';
-            const timeFormatted = formatFullTime(msg.timestamp);
-
-            const senderAvatarHtml = !isSentByMe
-                ? `<img src="${msg.senderAvatar || getDisplayConversationAvatar(conversation) || 'https://ui-avatars.com/api/?name=U&background=0ea5e9&color=fff'}"
-                        alt="${escapeHtml(msg.senderName)}"
-                        class="msg-sender-avatar">`
-                : '';
+            const timeFormatted = msg.displayTime || formatFullTime(msg.timestamp);
 
             const senderNameHtml =
                 !isSentByMe && conversation.type === 'GROUP'
@@ -1646,7 +1648,7 @@ function renderMessages(conversation) {
 
             const hoverToolbarHtml = !msg.unsent
                 ? `<div class="msg-hover-toolbar">
-                       <button type="button" class="msg-tool-btn" data-react-id="${msg.id}" data-emoji="❤️" title="Yêu thích">❤️</button>
+                       <button type="button" class="msg-tool-btn" data-react-id="${msg.id}" data-emoji="❤️" title="Thả tim">❤️</button>
                        <button type="button" class="msg-tool-btn" data-react-id="${msg.id}" data-emoji="😆" title="Haha">😆</button>
                        <button type="button" class="msg-tool-btn" data-react-id="${msg.id}" data-emoji="😮" title="Wow">😮</button>
                        <button type="button" class="msg-tool-btn" data-react-id="${msg.id}" data-emoji="👍" title="Thích">👍</button>
@@ -1663,38 +1665,32 @@ function renderMessages(conversation) {
                    </div>`
                 : '';
 
-            const deliveryIconHtml = isSentByMe
-                ? `<i class="fa-solid fa-circle-check" style="font-size: 0.68rem; color: var(--primary-bright);"></i>`
-                : '';
-
             return `
                 <div class="message-row ${rowClass}">
-                    ${senderAvatarHtml}
-                    <div class="message-group">
-                        ${senderNameHtml}
-                        ${quotedBoxHtml}
-                        <div class="message-bubble-wrap">
-                            <div class="message-bubble ${msg.unsent ? 'unsent' : ''}">
-                                ${imageHtml}
-                                ${msg.content ? `<div>${escapeHtml(msg.content)}</div>` : ''}
-                                ${reactionHtml}
-                            </div>
-                            ${hoverToolbarHtml}
+                    ${senderNameHtml}
+                    ${quotedBoxHtml}
+                    <div class="message-bubble-wrap">
+                        <div class="message-bubble ${msg.unsent ? 'unsent' : ''}" data-dblclick-msg-id="${msg.id}" title="Nhấn đúp để thả ❤️">
+                            ${imageHtml}
+                            ${msg.content ? `<div>${escapeHtml(msg.content)}</div>` : ''}
+                            <div class="bubble-time">${timeFormatted}</div>
+                            ${reactionHtml}
                         </div>
-                        <div class="message-meta">
-                            <span>${timeFormatted}</span>
-                            ${deliveryIconHtml}
-                        </div>
+                        ${hoverToolbarHtml}
                     </div>
                 </div>
             `;
         })
         .join('');
 
-    chatLogEl.innerHTML = `
-        <div class="chat-date-divider">Hôm nay</div>
-        ${messagesHtml}
-    `;
+    chatLogEl.innerHTML = messagesHtml;
+
+    chatLogEl.querySelectorAll('[data-dblclick-msg-id]').forEach((bubbleEl) => {
+        bubbleEl.addEventListener('dblclick', () => {
+            const msgId = bubbleEl.getAttribute('data-dblclick-msg-id');
+            toggleMessageReaction(msgId, '❤️');
+        });
+    });
 
     chatLogEl.querySelectorAll('[data-react-id]').forEach((btn) => {
         btn.addEventListener('click', () => {
@@ -1774,7 +1770,7 @@ function renderNotifications() {
         (n) => `
         <div class="notif-item ${n.unread ? 'unread' : ''}" data-notif-id="${n.id}" data-conv-id="${n.conversationId}">
             <div class="notif-icon">
-                <i class="fa-brands fa-facebook-messenger"></i>
+                <i class="fa-regular fa-heart"></i>
             </div>
             <div class="flex-grow-1 min-w-0">
                 <div class="notif-text">
@@ -1913,34 +1909,19 @@ function startCallSession(type = 'AUDIO') {
 // --------------------------------------------------------------------------
 
 function syncComposerButtons() {
-    const inputEl = document.getElementById('messageInput');
-    const quickBtn = document.getElementById('btnQuickReactionSend');
-    const sendBtn = document.getElementById('btnSendMessage');
-    if (!inputEl || !quickBtn || !sendBtn) return;
-
-    const hasText = inputEl.value.trim().length > 0;
-    quickBtn.classList.toggle('d-none', hasText);
-    sendBtn.classList.toggle('d-none', !hasText);
+    // Trong giao diện ChatSpace tối giản, nút "Gửi" luôn hiển thị rõ ràng bên phải
 }
 
 function setConversationFilter(filterValue) {
     currentFilter = filterValue;
 
-    document.querySelectorAll('.conversation-tabs .tab-pill').forEach((b) => {
+    document.querySelectorAll('.ig-tabs .tab-pill').forEach((b) => {
         b.classList.toggle('active', b.getAttribute('data-filter') === filterValue);
     });
 
-    document.querySelectorAll('.messenger-nav-rail [data-rail-filter]').forEach((b) => {
+    document.querySelectorAll('.ig-nav-rail [data-rail-filter]').forEach((b) => {
         b.classList.toggle('active', b.getAttribute('data-rail-filter') === filterValue);
     });
-
-    const headingEl = document.getElementById('sidebarHeadingTitle');
-    if (headingEl) {
-        if (filterValue === 'archived') headingEl.textContent = 'Kho lưu trữ';
-        else if (filterValue === 'GROUP') headingEl.textContent = 'Nhóm chat';
-        else if (filterValue === 'unread') headingEl.textContent = 'Chưa đọc';
-        else headingEl.textContent = 'Đoạn chat';
-    }
 
     renderConversationList();
 }
@@ -2112,11 +2093,11 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('emojiPickerPopover')?.classList.add('d-none');
     });
 
-    // Gửi nhanh biểu tượng cảm xúc (👍 / ❤️ / 🔥) khi ô nhập trống
-    document.getElementById('btnQuickReactionSend').addEventListener('click', () => {
+    // Gửi nhanh biểu tượng trái tim (❤️) kiểu Instagram Direct
+    document.getElementById('btnQuickReactionSend')?.addEventListener('click', () => {
         const conv = getConversationById(activeConversationId);
         if (!conv) return;
-        sendChatMessage(activeConversationId, conv.quickEmoji || '👍');
+        sendChatMessage(activeConversationId, '❤️');
     });
 
     // Hủy trả lời tin nhắn
@@ -2158,45 +2139,39 @@ document.addEventListener('DOMContentLoaded', () => {
         if (conv) renderMessages(conv);
     });
 
-    // Lọc theo Tab & Thanh Nav Rail bên trái
-    document.querySelectorAll('.conversation-tabs .tab-pill').forEach((tabBtn) => {
+    // Lọc theo Tab gạch chân Instagram & Thanh Nav Rail bên trái
+    document.querySelectorAll('.ig-tabs .tab-pill').forEach((tabBtn) => {
         tabBtn.addEventListener('click', () => {
             setConversationFilter(tabBtn.getAttribute('data-filter'));
         });
     });
 
-    document.querySelectorAll('.messenger-nav-rail [data-rail-filter]').forEach((railBtn) => {
+    document.querySelectorAll('.ig-nav-rail [data-rail-filter]').forEach((railBtn) => {
         railBtn.addEventListener('click', () => {
             setConversationFilter(railBtn.getAttribute('data-rail-filter'));
         });
     });
 
-    // Đổi màu chủ đề (Theme Swatches) & Quick Emoji
+    // Đổi màu chủ đề (Theme Swatches) & Đổi tên
     document.querySelectorAll('#themeColorSwatches .theme-swatch').forEach((swatchBtn) => {
         swatchBtn.addEventListener('click', () => {
             changeActiveConversationTheme(swatchBtn.getAttribute('data-theme-color'));
         });
     });
-    document.getElementById('drawerBtnChangeQuickEmoji').addEventListener('click', cycleQuickEmoji);
-    document.getElementById('drawerBtnRenameConv').addEventListener('click', renameActiveConversation);
+    document.getElementById('drawerBtnChangeQuickEmoji')?.addEventListener('click', cycleQuickEmoji);
+    document.getElementById('drawerBtnRenameConv')?.addEventListener('click', renameActiveConversation);
 
-    // Mở Modal Tạo nhóm mới & Thêm thành viên vào nhóm
-    document.getElementById('btnOpenCreateGroup').addEventListener('click', () => openGroupModal('CREATE'));
-    document.getElementById('btnRailCreateGroup').addEventListener('click', () => openGroupModal('CREATE'));
-    document.getElementById('btnEmptyCreateGroup').addEventListener('click', () => openGroupModal('CREATE'));
-    document.getElementById('drawerBtnAddMember').addEventListener('click', () => openGroupModal('ADD_MEMBER'));
-    document.getElementById('btnHeaderAddMember').addEventListener('click', () => openGroupModal('ADD_MEMBER'));
-
-    // Nút Tin nhắn mới (Mở trạng thái chọn cuộc trò chuyện mới)
-    document.getElementById('btnNewMessageCompose').addEventListener('click', () => {
-        selectConversation(null);
-        searchInput.focus();
-    });
+    // Mở Modal Tạo nhóm mới / Tin nhắn mới & Thêm thành viên vào nhóm
+    document.getElementById('btnOpenCreateGroup')?.addEventListener('click', () => openGroupModal('CREATE'));
+    document.getElementById('btnRailCreateGroup')?.addEventListener('click', () => openGroupModal('CREATE'));
+    document.getElementById('btnEmptyCreateGroup')?.addEventListener('click', () => openGroupModal('CREATE'));
+    document.getElementById('drawerBtnAddMember')?.addEventListener('click', () => openGroupModal('ADD_MEMBER'));
+    document.getElementById('btnHeaderAddMember')?.addEventListener('click', () => openGroupModal('ADD_MEMBER'));
 
     // Sự kiện bên trong Modal Tạo nhóm
-    document.getElementById('btnCloseCreateGroup').addEventListener('click', closeGroupModal);
-    document.getElementById('btnCancelCreateGroup').addEventListener('click', closeGroupModal);
-    document.getElementById('createGroupModalBackdrop').addEventListener('click', (e) => {
+    document.getElementById('btnCloseCreateGroup')?.addEventListener('click', closeGroupModal);
+    document.getElementById('btnCancelCreateGroup')?.addEventListener('click', closeGroupModal);
+    document.getElementById('createGroupModalBackdrop')?.addEventListener('click', (e) => {
         if (e.target.id === 'createGroupModalBackdrop') closeGroupModal();
     });
 
@@ -2310,7 +2285,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btnQuickDarkMode').addEventListener('click', () => {
         applyDarkMode(!USER_SETTINGS.darkMode);
         showToast(
-            USER_SETTINGS.darkMode ? 'Đã bật Chế độ tối Messenger' : 'Đã chuyển về Chế độ sáng',
+            USER_SETTINGS.darkMode ? 'Đã bật Chế độ tối ChatSpace' : 'Đã chuyển về Chế độ sáng',
             'fa-moon'
         );
     });
@@ -2336,7 +2311,7 @@ document.addEventListener('DOMContentLoaded', () => {
         USER_SETTINGS.activeStatus = e.target.checked;
         document
             .getElementById('myActiveStatusDot')
-            .classList.toggle('online', USER_SETTINGS.activeStatus);
+            ?.classList.toggle('online', USER_SETTINGS.activeStatus);
         showToast(
             USER_SETTINGS.activeStatus
                 ? 'Đã bật hiển thị Trạng thái hoạt động'
@@ -2366,8 +2341,28 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('loginEmailInput').value = CURRENT_USER.email;
         authScreen.classList.remove('d-none');
     };
-    document.getElementById('btnSwitchAccount').addEventListener('click', openAuthScreen);
-    document.getElementById('btnLogoutFromSettings').addEventListener('click', openAuthScreen);
+    document.getElementById('btnSwitchAccount')?.addEventListener('click', openAuthScreen);
+    document.getElementById('btnHeaderSwitchAccount')?.addEventListener('click', openAuthScreen);
+    document.getElementById('btnLogoutFromSettings')?.addEventListener('click', openAuthScreen);
+    document.getElementById('btnCloseAuthScreen')?.addEventListener('click', () => {
+        authScreen.classList.add('d-none');
+    });
+    authScreen?.addEventListener('click', (e) => {
+        if (e.target === authScreen) authScreen.classList.add('d-none');
+    });
+    document.getElementById('btnGoogleOAuth')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        const nameVal = document.getElementById('loginNameInput')?.value.trim() || CURRENT_USER.name;
+        const emailVal = document.getElementById('loginEmailInput')?.value.trim() || CURRENT_USER.email;
+        loginAsUser({
+            id: 'user-google-' + emailVal.toLowerCase().replace(/[^a-z0-9]/g, ''),
+            name: nameVal,
+            shortName: nameVal.split(/\s+/).slice(-2).join(' '),
+            email: emailVal,
+            online: true,
+            avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(nameVal)}&background=0095f6&color=fff&bold=true`
+        });
+    });
 
     // Chọn Emoji
     const emojiPopover = document.getElementById('emojiPickerPopover');
