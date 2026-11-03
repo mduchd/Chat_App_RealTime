@@ -253,31 +253,53 @@ body {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 8px;
     padding: 0 4px;
     margin-bottom: 12px;
 }
 
 .sidebar-heading {
-    font-size: 1.35rem;
+    font-size: 1.25rem;
     font-weight: 700;
     color: var(--text-main);
     margin: 0;
+    white-space: nowrap;
 }
 
-.btn-new-group {
-    border: none;
+.sidebar-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.sidebar-action-btn {
+    position: relative;
+    width: 34px;
+    height: 34px;
+    border: 1px solid rgba(29, 114, 184, 0.2);
     background: rgba(29, 114, 184, 0.12);
     color: var(--theme-color);
-    font-size: 0.78rem;
-    font-weight: 600;
-    padding: 5px 10px;
-    border-radius: 8px;
+    font-size: 0.88rem;
+    border-radius: 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     cursor: pointer;
-    transition: background 0.15s ease;
+    transition: all 0.15s ease;
 }
 
-.btn-new-group:hover {
-    background: rgba(29, 114, 184, 0.22);
+.sidebar-action-btn:hover {
+    background: var(--theme-color);
+    color: #ffffff;
+    border-color: var(--theme-color);
+}
+
+.action-plus-sign {
+    font-size: 0.68rem;
+    font-weight: 800;
+    margin-left: 1px;
+    line-height: 1;
 }
 
 /* Ô tìm kiếm trắng bo góc đúng mẫu */
@@ -661,6 +683,25 @@ body {
     border-radius: 999px;
 }
 
+/* Dòng thông báo hệ thống căn giữa phần chat (Kết bạn, Tạo nhóm, Thêm thành viên) */
+.system-notice-row {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin: 6px 0;
+}
+
+.system-notice-text {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    background-color: var(--sidebar-card-bg);
+    padding: 4px 14px;
+    border-radius: 999px;
+    text-align: center;
+    max-width: 85%;
+}
+
 /* Bong bóng tin nhắn đúng chuẩn mẫu ChatSpace */
 .message-row {
     display: flex;
@@ -686,14 +727,9 @@ body {
 }
 
 .message-bubble-wrap {
-    display: flex;
+    display: inline-flex;
     align-items: center;
-    gap: 8px;
     position: relative;
-}
-
-.message-row.sent .message-bubble-wrap {
-    flex-direction: row-reverse;
 }
 
 .message-bubble {
@@ -774,20 +810,50 @@ body {
     box-shadow: 0 2px 4px rgba(15, 23, 42, 0.08);
 }
 
-/* Thanh công cụ khi di chuột vào tin nhắn */
+/* Thanh công cụ khi di chuột vào tin nhắn (tách khỏi luồng chiều rộng để không làm co bong bóng chat) */
 .msg-hover-toolbar {
-    display: none;
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    display: inline-flex;
     align-items: center;
     gap: 2px;
+    white-space: nowrap;
     background: var(--window-bg);
     border: 1px solid var(--border-light);
     border-radius: 999px;
     padding: 2px 6px;
     box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 0.12s ease, visibility 0.12s ease;
+    z-index: 20;
+}
+
+/* Cầu nối vô hình giúp di chuột từ bong bóng sang thanh công cụ không bị mất hover */
+.msg-hover-toolbar::before {
+    content: '';
+    position: absolute;
+    top: -6px;
+    bottom: -6px;
+    left: -12px;
+    right: -12px;
+    z-index: -1;
+}
+
+.message-row.received .msg-hover-toolbar {
+    left: calc(100% + 8px);
+}
+
+.message-row.sent .msg-hover-toolbar {
+    right: calc(100% + 8px);
 }
 
 .message-bubble-wrap:hover .msg-hover-toolbar {
-    display: inline-flex;
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
 }
 
 .msg-tool-btn {
@@ -1513,6 +1579,141 @@ body.dark-mode .cs-composer-bar {
     align-items: center;
     gap: 8px;
     box-shadow: 0 8px 20px rgba(15, 23, 42, 0.2);
+}
+
+/* ==========================================================================
+   6. MODAL KẾT BẠN & QUẢN LÝ DANH BẠ TÀI KHOẢN
+   ========================================================================== */
+.friend-req-pill {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    border-radius: 999px;
+    background: #ef4444;
+    color: #ffffff;
+    font-size: 0.62rem;
+    font-weight: 700;
+    box-shadow: 0 0 0 2px var(--sidebar-card-bg);
+}
+
+.friends-modal-tabs {
+    display: flex;
+    gap: 6px;
+    background: var(--sidebar-card-bg);
+    padding: 4px;
+    border-radius: 10px;
+}
+
+.friends-tab-btn {
+    flex: 1;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    font-weight: 600;
+    padding: 6px 8px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.friends-tab-btn.active {
+    background: var(--window-bg);
+    color: var(--theme-color);
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+}
+
+.quick-add-friend-box {
+    background: var(--sidebar-card-bg);
+    padding: 10px 12px;
+    border-radius: 10px;
+}
+
+.friends-list-container {
+    max-height: 290px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-right: 2px;
+}
+
+.friend-account-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 9px 12px;
+    border: 1px solid var(--border-light);
+    border-radius: 10px;
+    background: var(--window-bg);
+}
+
+.friend-account-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+}
+
+.friend-account-name {
+    font-size: 0.86rem;
+    font-weight: 700;
+    color: var(--text-main);
+}
+
+.friend-account-email {
+    font-size: 0.74rem;
+    color: var(--text-muted);
+}
+
+.friend-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.btn-friend-action {
+    border: 1px solid var(--border-light);
+    background: var(--sidebar-card-bg);
+    color: var(--text-main);
+    font-size: 0.76rem;
+    font-weight: 600;
+    padding: 5px 10px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.btn-friend-action.primary {
+    border-color: var(--theme-color);
+    background: var(--theme-color);
+    color: #ffffff;
+}
+
+.btn-friend-action.primary:hover {
+    background: var(--theme-hover);
+}
+
+.btn-friend-action.outline-primary {
+    border-color: var(--theme-color);
+    background: transparent;
+    color: var(--theme-color);
+}
+
+.btn-friend-action.outline-primary:hover {
+    background: var(--sidebar-item-active);
+}
+
+.btn-friend-action.danger {
+    color: #ef4444;
 }
 
 /* Đáp ứng màn hình nhỏ (Mobile) */

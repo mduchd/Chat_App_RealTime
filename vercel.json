@@ -1,0 +1,6 @@
+{
+  "version": 2,
+  "buildCommand": "",
+  "outputDirectory": "src/main/resources/static",
+  "cleanUrls": true
+}

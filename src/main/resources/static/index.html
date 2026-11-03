@@ -110,6 +110,12 @@
                         <i class="fa-solid fa-chevron-down" style="font-size: 0.65rem;"></i>
                     </button>
 
+                    <!-- Nút Kết bạn & Lời mời kết bạn -->
+                    <button type="button" class="topbar-icon-btn" id="btnTopbarFriends" title="Kết bạn & Danh bạ">
+                        <i class="fa-solid fa-user-plus"></i>
+                        <span id="topbarFriendBadge" class="topbar-badge d-none">0</span>
+                    </button>
+
                     <!-- Nút Thông báo -->
                     <div class="position-relative">
                         <button type="button" class="topbar-icon-btn" id="btnNotifications" title="Thông báo">
@@ -154,9 +160,16 @@
                 <aside id="sidebarPanel" class="sidebar-card">
                     <div class="sidebar-title-row">
                         <h2 class="sidebar-heading" id="sidebarHeadingTitle">Hội thoại</h2>
-                        <button type="button" class="btn-new-group" id="btnOpenCreateGroup" title="Tạo nhóm hoặc cuộc trò chuyện mới">
-                            <i class="fa-solid fa-plus"></i> Tạo nhóm
-                        </button>
+                        <div class="sidebar-header-actions">
+                            <button type="button" class="sidebar-action-btn" id="btnOpenFriendsModal" title="Kết bạn & Lời mời kết bạn">
+                                <i class="fa-solid fa-user-plus"></i>
+                                <span id="sidebarFriendBadge" class="friend-req-pill d-none">0</span>
+                            </button>
+                            <button type="button" class="sidebar-action-btn" id="btnOpenCreateGroup" title="Tạo nhóm chat mới">
+                                <i class="fa-solid fa-users"></i>
+                                <span class="action-plus-sign">+</span>
+                            </button>
+                        </div>
                     </div>
 
                     <!-- Ô tìm kiếm trắng "Tìm người / tìm nhóm..." đúng theo mẫu -->
@@ -535,6 +548,57 @@
                     </button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- =====================================================================
+         4B. MODAL KẾT BẠN & QUẢN LÝ DANH BẠ TÀI KHOẢN
+         ===================================================================== -->
+    <div id="friendsModalBackdrop" class="custom-modal-backdrop d-none">
+        <div class="custom-modal-card" style="max-width: 500px;">
+            <div class="custom-modal-header">
+                <h6 class="mb-0 fw-bold">
+                    <i class="fa-solid fa-user-group text-primary me-1"></i> Kết bạn & Danh bạ tài khoản
+                </h6>
+                <button type="button" class="icon-btn" id="btnCloseFriendsModal">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <div class="custom-modal-body">
+                <!-- 3 Tab: Tìm & Kết bạn | Lời mời kết bạn | Bạn bè của tôi -->
+                <div class="friends-modal-tabs mb-3">
+                    <button type="button" class="friends-tab-btn active" data-friends-tab="discover">
+                        Tìm tài khoản
+                    </button>
+                    <button type="button" class="friends-tab-btn" data-friends-tab="requests">
+                        Lời mời
+                        <span id="modalFriendReqCount" class="tab-mini-count d-none">0</span>
+                    </button>
+                    <button type="button" class="friends-tab-btn" data-friends-tab="friends">
+                        Bạn bè (<span id="modalFriendsCount">0</span>)
+                    </button>
+                </div>
+
+                <!-- Khung kết bạn nhanh bằng Email hoặc Tên tài khoản mới -->
+                <form id="quickAddFriendForm" class="quick-add-friend-box mb-3" autocomplete="off">
+                    <div class="small fw-semibold mb-1">Gửi lời mời kết bạn theo Tên hoặc Email:</div>
+                    <div class="d-flex gap-2">
+                        <input
+                            type="text"
+                            id="friendSearchOrEmailInput"
+                            class="form-control form-control-sm"
+                            placeholder="Nhập tên hoặc email tài khoản cần kết bạn..."
+                        >
+                        <button type="submit" class="btn-cs-primary btn-sm text-nowrap px-3">
+                            + Kết bạn
+                        </button>
+                    </div>
+                </form>
+
+                <!-- Danh sách hiển thị theo Tab đang chọn -->
+                <div id="friendsModalListContainer" class="friends-list-container"></div>
+            </div>
         </div>
     </div>
 

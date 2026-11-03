@@ -11,7 +11,8 @@
 const STORAGE_KEYS = {
     TAB_USER: 'chatspace_tab_user_v2',
     CONVERSATIONS: 'chatspace_conversations_v2',
-    CONTACTS: 'chatspace_contacts_v2'
+    CONTACTS: 'chatspace_contacts_v2',
+    FRIENDSHIPS: 'chatspace_friendships_v2'
 };
 
 // Danh sách tài khoản thành viên mặc định khớp với mẫu thiết kế ChatSpace
@@ -268,6 +269,27 @@ const INITIAL_CONVERSATIONS = [
 
 let CONVERSATIONS = loadConversations();
 
+// Dữ liệu Kết bạn & Lời mời kết bạn mặc định giữa các tài khoản
+const INITIAL_FRIENDSHIPS = {
+    accepted: [
+        ['user-duc', 'user-an'],
+        ['user-duc', 'user-minh'],
+        ['user-duc', 'user-linh']
+    ],
+    requests: [
+        {
+            id: 'freq-init-1',
+            fromId: 'user-ha',
+            toId: 'user-duc',
+            createdAt: '2026-11-03T03:30:00.000Z'
+        }
+    ]
+};
+
+let FRIENDSHIPS = loadFriendships();
+let currentFriendsTab = 'discover';
+let friendSearchFilter = '';
+
 // Biến quản lý trạng thái giao diện & STOMP
 let stompClient = null;
 let isWsConnected = false;
@@ -307,7 +329,7 @@ function loadTabUser() {
 function saveTabUser(userObj) {
     try {
         sessionStorage.setItem(STORAGE_KEYS.TAB_USER, JSON.stringify(userObj));
-    } catch (_) {}
+    } catch (_) { }
 }
 
 function loadContactsDirectory() {
@@ -322,7 +344,7 @@ function loadContactsDirectory() {
 function saveContactsDirectory() {
     try {
         localStorage.setItem(STORAGE_KEYS.CONTACTS, JSON.stringify(CONTACTS_DIRECTORY));
-    } catch (_) {}
+    } catch (_) { }
 }
 
 function loadConversations() {
@@ -332,14 +354,41 @@ function loadConversations() {
             const parsed = JSON.parse(raw);
             if (Array.isArray(parsed) && parsed.length > 0) return parsed;
         }
-    } catch (_) {}
+    } catch (_) { }
     return JSON.parse(JSON.stringify(INITIAL_CONVERSATIONS));
+}
+
+function loadFriendships() {
+    try {
+        const raw = localStorage.getItem(STORAGE_KEYS.FRIENDSHIPS);
+        if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed && Array.isArray(parsed.accepted) && Array.isArray(parsed.requests)) {
+                return parsed;
+            }
+        }
+    } catch (_) {}
+    return JSON.parse(JSON.stringify(INITIAL_FRIENDSHIPS));
+}
+
+function saveAndSyncFriendships(eventType = 'FRIENDS_UPDATED', extraData = {}) {
+    try {
+        localStorage.setItem(STORAGE_KEYS.FRIENDSHIPS, JSON.stringify(FRIENDSHIPS));
+    } catch (_) {}
+
+    if (realtimeBus) {
+        realtimeBus.postMessage({
+            type: eventType,
+            senderTabUserId: CURRENT_USER.id,
+            ...extraData
+        });
+    }
 }
 
 function persistAndSyncConversations(eventType = 'SYNC_STATE', extraData = {}) {
     try {
         localStorage.setItem(STORAGE_KEYS.CONVERSATIONS, JSON.stringify(CONVERSATIONS));
-    } catch (_) {}
+    } catch (_) { }
 
     if (realtimeBus) {
         realtimeBus.postMessage({
@@ -369,9 +418,40 @@ if (realtimeBus) {
             return;
         }
 
-        // Đồng bộ lại danh sách cuộc trò chuyện và tin nhắn từ Kho lưu trữ chung
+        // Đồng bộ lại danh sách cuộc trò chuyện, danh bạ và kết bạn từ Kho lưu trữ chung
         CONVERSATIONS = loadConversations();
         CONTACTS_DIRECTORY = loadContactsDirectory();
+        FRIENDSHIPS = loadFriendships();
+
+        if (data.type === 'FRIEND_REQUEST_SENT' && data.toId === CURRENT_USER.id) {
+            NOTIFICATIONS.unshift({
+                id: 'notif-freq-' + Date.now(),
+                conversationId: null,
+                title: 'Lời mời kết bạn mới',
+                content: `${data.fromName} đã gửi cho bạn lời mời kết bạn.`,
+                time: 'Vừa xong',
+                unread: true
+            });
+            renderNotifications();
+            showToast(`${data.fromName} vừa gửi lời mời kết bạn!`, 'fa-user-plus');
+            if (USER_SETTINGS.soundNotif) playSubtleBeep();
+        }
+
+        if (data.type === 'FRIEND_REQUEST_ACCEPTED' && data.fromId === CURRENT_USER.id) {
+            NOTIFICATIONS.unshift({
+                id: 'notif-facc-' + Date.now(),
+                conversationId: data.conversationId || null,
+                title: 'Kết bạn thành công',
+                content: `${data.accepterName} đã đồng ý kết bạn với bạn.`,
+                time: 'Vừa xong',
+                unread: true
+            });
+            renderNotifications();
+            showToast(`${data.accepterName} đã chấp nhận lời mời kết bạn!`, 'fa-user-check');
+        }
+
+        updateFriendBadges();
+        renderFriendsModalList();
 
         if (data.type === 'NEW_MESSAGE' && data.message) {
             const targetConv = getConversationById(data.conversationId);
@@ -508,9 +588,9 @@ function sendChatMessage(conversationId, content, extraOptions = {}) {
         imageUrl: extraOptions.imageUrl || null,
         replyTo: replyingToMessage
             ? {
-                  senderName: replyingToMessage.senderName,
-                  content: replyingToMessage.content
-              }
+                senderName: replyingToMessage.senderName,
+                content: replyingToMessage.content
+            }
             : null,
         timestamp: payload.timestamp
     };
@@ -644,6 +724,8 @@ function loginAsUser(userObj) {
     saveContactsDirectory();
 
     updateCurrentUserProfileUI();
+    updateFriendBadges();
+    renderFriendsModalList();
     renderActiveNowStrip();
     renderConversationList();
 
@@ -895,11 +977,10 @@ function renderContactPickerList() {
                     </div>
                 </div>
                 <div>
-                    ${
-                        isAlreadyInGroup
-                            ? `<span class="badge bg-secondary-subtle text-secondary">Đã trong nhóm</span>`
-                            : `<input type="checkbox" class="form-check-input" ${isSelected ? 'checked' : ''} style="pointer-events: none;">`
-                    }
+                    ${isAlreadyInGroup
+                    ? `<span class="badge bg-secondary-subtle text-secondary">Đã trong nhóm</span>`
+                    : `<input type="checkbox" class="form-check-input" ${isSelected ? 'checked' : ''} style="pointer-events: none;">`
+                }
                 </div>
             </div>
         `;
@@ -1030,6 +1111,7 @@ function handleGroupModalSubmit(event) {
             messages: [
                 {
                     id: 'msg-init-' + Date.now(),
+                    isSystemNotice: true,
                     senderId: CURRENT_USER.id,
                     senderName: CURRENT_USER.name,
                     senderAvatar: CURRENT_USER.avatar,
@@ -1071,6 +1153,7 @@ function handleGroupModalSubmit(event) {
             conv.id,
             {
                 id: 'msg-add-' + Date.now(),
+                isSystemNotice: true,
                 senderId: CURRENT_USER.id,
                 senderName: CURRENT_USER.name,
                 senderAvatar: CURRENT_USER.avatar,
@@ -1543,8 +1626,8 @@ function updateActiveChatHeaderAndDrawer(conv) {
             ? 'Bỏ chặn nhóm'
             : 'Bỏ chặn người dùng'
         : isGroup
-        ? 'Rời & Chặn nhóm'
-        : 'Chặn người dùng';
+            ? 'Rời & Chặn nhóm'
+            : 'Chặn người dùng';
 
     const sharedFilesEl = document.getElementById('drawerSharedFiles');
     if (conv.sharedFiles && conv.sharedFiles.length > 0) {
@@ -1581,13 +1664,12 @@ function updateActiveChatHeaderAndDrawer(conv) {
                         <div class="drawer-member-role">${escapeHtml(m.role || 'Thành viên')}</div>
                     </div>
                 </div>
-                ${
-                    m.id !== CURRENT_USER.id
+                ${m.id !== CURRENT_USER.id
                         ? `<button type="button" class="btn-remove-member" data-remove-member-id="${m.id}" title="Mời khỏi nhóm">
                                <i class="fa-solid fa-user-xmark"></i>
                            </button>`
                         : `<span class="badge bg-primary-subtle text-primary" style="font-size: 0.65rem;">Bạn</span>`
-                }
+                    }
             </div>
         `
             )
@@ -1622,6 +1704,20 @@ function renderMessages(conversation) {
 
     const messagesHtml = visibleMessages
         .map((msg) => {
+            const isSystem =
+                msg.isSystemNotice ||
+                String(msg.id || '').startsWith('msg-friend-') ||
+                String(msg.id || '').startsWith('msg-init-') ||
+                String(msg.id || '').startsWith('msg-add-');
+
+            if (isSystem) {
+                return `
+                    <div class="system-notice-row">
+                        <span class="system-notice-text">${escapeHtml(msg.content)}</span>
+                    </div>
+                `;
+            }
+
             const isSentByMe = msg.senderId === CURRENT_USER.id;
             const rowClass = isSentByMe ? 'sent' : 'received';
             const timeFormatted = msg.displayTime || formatFullTime(msg.timestamp);
@@ -1655,13 +1751,12 @@ function renderMessages(conversation) {
                        <button type="button" class="msg-tool-btn" data-reply-id="${msg.id}" title="Trả lời">
                            <i class="fa-solid fa-reply"></i>
                        </button>
-                       ${
-                           isSentByMe
-                               ? `<button type="button" class="msg-tool-btn text-danger" data-unsend-id="${msg.id}" title="Thu hồi tin nhắn">
+                       ${isSentByMe
+                    ? `<button type="button" class="msg-tool-btn text-danger" data-unsend-id="${msg.id}" title="Thu hồi tin nhắn">
                                       <i class="fa-regular fa-trash-can"></i>
                                   </button>`
-                               : ''
-                       }
+                    : ''
+                }
                    </div>`
                 : '';
 
@@ -1856,7 +1951,7 @@ function appendMessageToConversation(conversationId, messageObj, broadcastToOthe
     } else {
         try {
             localStorage.setItem(STORAGE_KEYS.CONVERSATIONS, JSON.stringify(CONVERSATIONS));
-        } catch (_) {}
+        } catch (_) { }
     }
 
     renderConversationList();
@@ -1977,7 +2072,7 @@ function playSubtleBeep() {
         gain.connect(ctx.destination);
         osc.start();
         osc.stop(ctx.currentTime + 0.09);
-    } catch (_) {}
+    } catch (_) { }
 }
 
 function getConversationById(id) {
@@ -2023,10 +2118,470 @@ function escapeHtml(unsafeText) {
 }
 
 // --------------------------------------------------------------------------
+// 9B. CHỨC NĂNG KẾT BẠN & QUẢN LÝ DANH BẠ TÀI KHOẢN (ĐỒNG BỘ ĐA TAB)
+// --------------------------------------------------------------------------
+
+function areUsersFriends(userA, userB) {
+    return FRIENDSHIPS.accepted.some(
+        (pair) =>
+            (pair[0] === userA && pair[1] === userB) ||
+            (pair[0] === userB && pair[1] === userA)
+    );
+}
+
+function getPendingRequestBetween(userA, userB) {
+    return (
+        FRIENDSHIPS.requests.find(
+            (r) =>
+                (r.fromId === userA && r.toId === userB) ||
+                (r.fromId === userB && r.toId === userA)
+        ) || null
+    );
+}
+
+function updateFriendBadges() {
+    const incomingReqs = FRIENDSHIPS.requests.filter((r) => r.toId === CURRENT_USER.id);
+    const myFriendsCount = CONTACTS_DIRECTORY.filter(
+        (c) => c.id !== CURRENT_USER.id && areUsersFriends(CURRENT_USER.id, c.id)
+    ).length;
+
+    const topbarBadge = document.getElementById('topbarFriendBadge');
+    const sidebarBadge = document.getElementById('sidebarFriendBadge');
+    const modalReqBadge = document.getElementById('modalFriendReqCount');
+    const modalFriendsCount = document.getElementById('modalFriendsCount');
+
+    const reqCount = incomingReqs.length;
+    if (topbarBadge) {
+        topbarBadge.textContent = reqCount;
+        topbarBadge.classList.toggle('d-none', reqCount === 0);
+    }
+    if (sidebarBadge) {
+        sidebarBadge.textContent = reqCount;
+        sidebarBadge.classList.toggle('d-none', reqCount === 0);
+    }
+    if (modalReqBadge) {
+        modalReqBadge.textContent = reqCount;
+        modalReqBadge.classList.toggle('d-none', reqCount === 0);
+    }
+    if (modalFriendsCount) {
+        modalFriendsCount.textContent = myFriendsCount;
+    }
+}
+
+function openFriendsModal(defaultTab = 'discover') {
+    currentFriendsTab = defaultTab;
+    document.querySelectorAll('[data-friends-tab]').forEach((btn) => {
+        btn.classList.toggle('active', btn.getAttribute('data-friends-tab') === currentFriendsTab);
+    });
+    updateFriendBadges();
+    renderFriendsModalList();
+    document.getElementById('friendsModalBackdrop')?.classList.remove('d-none');
+}
+
+function closeFriendsModal() {
+    document.getElementById('friendsModalBackdrop')?.classList.add('d-none');
+}
+
+function sendFriendRequest(targetUserId) {
+    if (!targetUserId || targetUserId === CURRENT_USER.id) return;
+    const targetUser = CONTACTS_DIRECTORY.find((c) => c.id === targetUserId);
+    if (!targetUser) return;
+
+    if (areUsersFriends(CURRENT_USER.id, targetUserId)) {
+        showToast(`Bạn và ${targetUser.name} đã là bạn bè!`, 'fa-user-check');
+        return;
+    }
+
+    const existingReq = getPendingRequestBetween(CURRENT_USER.id, targetUserId);
+    if (existingReq) {
+        if (existingReq.fromId === targetUserId) {
+            acceptFriendRequest(existingReq.id);
+            return;
+        }
+        showToast(`Đã gửi lời mời kết bạn cho ${targetUser.name} trước đó.`, 'fa-paper-plane');
+        return;
+    }
+
+    const newReq = {
+        id: 'freq-' + Date.now(),
+        fromId: CURRENT_USER.id,
+        toId: targetUserId,
+        createdAt: new Date().toISOString()
+    };
+
+    FRIENDSHIPS.requests.unshift(newReq);
+    saveAndSyncFriendships('FRIEND_REQUEST_SENT', {
+        fromId: CURRENT_USER.id,
+        fromName: CURRENT_USER.name,
+        toId: targetUserId
+    });
+
+    updateFriendBadges();
+    renderFriendsModalList();
+    showToast(`Đã gửi lời mời kết bạn tới ${targetUser.name}!`, 'fa-user-plus');
+}
+
+function acceptFriendRequest(requestId) {
+    const reqIdx = FRIENDSHIPS.requests.findIndex((r) => r.id === requestId);
+    if (reqIdx === -1) return;
+
+    const req = FRIENDSHIPS.requests[reqIdx];
+    FRIENDSHIPS.requests.splice(reqIdx, 1);
+
+    if (!areUsersFriends(req.fromId, req.toId)) {
+        FRIENDSHIPS.accepted.push([req.fromId, req.toId]);
+    }
+
+    const partnerId = req.fromId === CURRENT_USER.id ? req.toId : req.fromId;
+    const partner = CONTACTS_DIRECTORY.find((c) => c.id === partnerId);
+
+    // Tạo hoặc mở ngay cuộc trò chuyện 1-1 giữa 2 người vừa kết bạn
+    let conv = CONVERSATIONS.find(
+        (c) =>
+            c.type === 'DIRECT' &&
+            ((c.participants &&
+                c.participants.includes(partnerId) &&
+                c.participants.includes(CURRENT_USER.id)) ||
+                c.contactId === partnerId)
+    );
+
+    if (!conv && partner) {
+        conv = {
+            id: 'conv-' + [CURRENT_USER.id, partner.id].sort().join('-'),
+            contactId: partner.id,
+            participants: [CURRENT_USER.id, partner.id],
+            name: partner.name,
+            type: 'DIRECT',
+            roomId: null,
+            online: partner.online,
+            statusText: 'Đang hoạt động',
+            unreadCount: 0,
+            pinned: false,
+            muted: false,
+            archived: false,
+            blocked: false,
+            themeColor: '#1d72b8',
+            quickEmoji: '👍',
+            avatarText: getInitials(partner.name, partner.initials),
+            sharedFiles: [],
+            avatar: partner.avatar,
+            messages: [
+                {
+                    id: 'msg-friend-' + Date.now(),
+                    isSystemNotice: true,
+                    senderId: CURRENT_USER.id,
+                    senderName: CURRENT_USER.name,
+                    content: `Hai bạn đã kết bạn thành công trên ChatSpace! Hãy bắt đầu trò chuyện nhé.`,
+                    timestamp: new Date().toISOString()
+                }
+            ]
+        };
+        CONVERSATIONS.unshift(conv);
+        persistAndSyncConversations('DIRECT_CREATED');
+    }
+
+    saveAndSyncFriendships('FRIEND_REQUEST_ACCEPTED', {
+        fromId: req.fromId,
+        toId: req.toId,
+        accepterName: CURRENT_USER.name,
+        conversationId: conv?.id || null
+    });
+
+    updateFriendBadges();
+    renderFriendsModalList();
+    renderConversationList();
+    if (conv) {
+        selectConversation(conv.id);
+    }
+    showToast(
+        `Đã kết bạn với ${partner ? partner.name : 'thành viên'} thành công!`,
+        'fa-user-check'
+    );
+}
+
+function cancelOrRejectFriendRequest(requestId) {
+    const idx = FRIENDSHIPS.requests.findIndex((r) => r.id === requestId);
+    if (idx === -1) return;
+
+    FRIENDSHIPS.requests.splice(idx, 1);
+    saveAndSyncFriendships('FRIEND_REQUEST_REMOVED');
+    updateFriendBadges();
+    renderFriendsModalList();
+    showToast('Đã hủy lời mời kết bạn', 'fa-user-xmark');
+}
+
+function removeFriend(friendUserId) {
+    const friendUser = CONTACTS_DIRECTORY.find((c) => c.id === friendUserId);
+    FRIENDSHIPS.accepted = FRIENDSHIPS.accepted.filter(
+        (pair) =>
+            !(
+                (pair[0] === CURRENT_USER.id && pair[1] === friendUserId) ||
+                (pair[0] === friendUserId && pair[1] === CURRENT_USER.id)
+            )
+    );
+    saveAndSyncFriendships('FRIEND_REMOVED');
+    updateFriendBadges();
+    renderFriendsModalList();
+    showToast(
+        `Đã hủy kết bạn với ${friendUser ? friendUser.name : 'người dùng'}`,
+        'fa-user-minus'
+    );
+}
+
+function handleQuickAddFriendByInput(event) {
+    event.preventDefault();
+    const inputEl = document.getElementById('friendSearchOrEmailInput');
+    const rawVal = (inputEl?.value || '').trim();
+    if (!rawVal) {
+        showToast('Vui lòng nhập Tên hoặc Email tài khoản cần kết bạn!', 'fa-circle-exclamation');
+        inputEl?.focus();
+        return;
+    }
+
+    // Kiểm tra xem tài khoản đã có trong danh bạ chung chưa
+    let targetAccount = CONTACTS_DIRECTORY.find(
+        (c) =>
+            c.id !== CURRENT_USER.id &&
+            (c.email.toLowerCase() === rawVal.toLowerCase() ||
+                c.name.toLowerCase() === rawVal.toLowerCase())
+    );
+
+    // Nếu chưa có, tạo tài khoản mới vào danh bạ để kết bạn ngay
+    if (!targetAccount) {
+        const isEmail = rawVal.includes('@');
+        const displayName = isEmail ? rawVal.split('@')[0] : rawVal;
+        const emailAddr = isEmail
+            ? rawVal
+            : rawVal.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '') + '@chatspace.vn';
+
+        targetAccount = {
+            id: 'user-' + Date.now(),
+            name: displayName,
+            shortName: displayName.split(/\s+/).slice(-2).join(' '),
+            initials: getInitials(displayName),
+            email: emailAddr,
+            online: true,
+            avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=1d72b8&color=fff&bold=true`
+        };
+        CONTACTS_DIRECTORY.unshift(targetAccount);
+        saveContactsDirectory();
+    }
+
+    inputEl.value = '';
+    friendSearchFilter = '';
+    sendFriendRequest(targetAccount.id);
+}
+
+function renderFriendsModalList() {
+    const container = document.getElementById('friendsModalListContainer');
+    if (!container) return;
+
+    const query = friendSearchFilter.toLowerCase();
+    const otherAccounts = CONTACTS_DIRECTORY.filter((c) => {
+        if (c.id === CURRENT_USER.id) return false;
+        if (!query) return true;
+        return c.name.toLowerCase().includes(query) || c.email.toLowerCase().includes(query);
+    });
+
+    if (currentFriendsTab === 'requests') {
+        const myRequests = FRIENDSHIPS.requests.filter(
+            (r) => r.toId === CURRENT_USER.id || r.fromId === CURRENT_USER.id
+        );
+
+        if (myRequests.length === 0) {
+            container.innerHTML = `
+                <div class="text-center text-muted py-4 small">
+                    Hiện không có lời mời kết bạn nào đang chờ xử lý.
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = myRequests
+            .map((req) => {
+                const isIncoming = req.toId === CURRENT_USER.id;
+                const partnerId = isIncoming ? req.fromId : req.toId;
+                const partner = CONTACTS_DIRECTORY.find((c) => c.id === partnerId) || {
+                    id: partnerId,
+                    name: 'Người dùng ChatSpace',
+                    email: 'user@chatspace.vn'
+                };
+                const initials = getInitials(partner.name, partner.initials);
+
+                return `
+                    <div class="friend-account-row">
+                        <div class="friend-account-info">
+                            <div class="conv-avatar-circle active-avatar">${escapeHtml(initials)}</div>
+                            <div class="min-w-0">
+                                <div class="friend-account-name text-truncate">${escapeHtml(partner.name)}</div>
+                                <div class="friend-account-email text-truncate">
+                                    ${isIncoming ? 'Đã gửi lời mời kết bạn cho bạn' : 'Bạn đã gửi lời mời kết bạn'}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="friend-actions">
+                            ${
+                                isIncoming
+                                    ? `<button type="button" class="btn-friend-action primary" data-accept-req-id="${req.id}">
+                                           Chấp nhận
+                                       </button>
+                                       <button type="button" class="btn-friend-action danger" data-reject-req-id="${req.id}">
+                                           Từ chối
+                                       </button>`
+                                    : `<button type="button" class="btn-friend-action" data-reject-req-id="${req.id}">
+                                           Hủy lời mời
+                                       </button>`
+                            }
+                        </div>
+                    </div>
+                `;
+            })
+            .join('');
+    } else if (currentFriendsTab === 'friends') {
+        const myFriends = otherAccounts.filter((c) => areUsersFriends(CURRENT_USER.id, c.id));
+
+        if (myFriends.length === 0) {
+            container.innerHTML = `
+                <div class="text-center text-muted py-4 small">
+                    Chưa có bạn bè nào. Hãy chuyển sang tab <strong>Tìm tài khoản</strong> để kết bạn nhé!
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = myFriends
+            .map((friend) => {
+                const initials = getInitials(friend.name, friend.initials);
+                return `
+                    <div class="friend-account-row">
+                        <div class="friend-account-info">
+                            <div class="conv-avatar-circle active-avatar">${escapeHtml(initials)}</div>
+                            <div class="min-w-0">
+                                <div class="friend-account-name text-truncate">${escapeHtml(friend.name)}</div>
+                                <div class="friend-account-email text-truncate">${escapeHtml(friend.email)}</div>
+                            </div>
+                        </div>
+                        <div class="friend-actions">
+                            <button type="button" class="btn-friend-action primary" data-chat-friend-id="${friend.id}">
+                                Nhắn tin
+                            </button>
+                            <button type="button" class="btn-friend-action danger" data-unfriend-id="${friend.id}" title="Hủy kết bạn">
+                                <i class="fa-solid fa-user-minus"></i>
+                            </button>
+                        </div>
+                    </div>
+                `;
+            })
+            .join('');
+    } else {
+        // Tab 'discover' (Tìm tài khoản & Kết bạn)
+        if (otherAccounts.length === 0) {
+            container.innerHTML = `
+                <div class="text-center text-muted py-4 small">
+                    Không tìm thấy tài khoản. Nhấn nút <strong>"+ Kết bạn"</strong> ở trên để gửi lời mời trực tiếp!
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = otherAccounts
+            .map((acc) => {
+                const initials = getInitials(acc.name, acc.initials);
+                const isFriend = areUsersFriends(CURRENT_USER.id, acc.id);
+                const pendingReq = getPendingRequestBetween(CURRENT_USER.id, acc.id);
+
+                let actionButtonsHtml = '';
+                if (isFriend) {
+                    actionButtonsHtml = `
+                        <span class="badge bg-success-subtle text-success border border-success-subtle">Bạn bè</span>
+                        <button type="button" class="btn-friend-action outline-primary" data-chat-friend-id="${acc.id}">
+                            Nhắn tin
+                        </button>
+                    `;
+                } else if (pendingReq) {
+                    if (pendingReq.toId === CURRENT_USER.id) {
+                        actionButtonsHtml = `
+                            <button type="button" class="btn-friend-action primary" data-accept-req-id="${pendingReq.id}">
+                                Chấp nhận
+                            </button>
+                        `;
+                    } else {
+                        actionButtonsHtml = `
+                            <button type="button" class="btn-friend-action" data-reject-req-id="${pendingReq.id}">
+                                Đã gửi (Hủy)
+                            </button>
+                        `;
+                    }
+                } else {
+                    actionButtonsHtml = `
+                        <button type="button" class="btn-friend-action primary" data-send-freq-id="${acc.id}">
+                            + Kết bạn
+                        </button>
+                        <button type="button" class="btn-friend-action" data-chat-friend-id="${acc.id}" title="Nhắn tin">
+                            <i class="fa-regular fa-comment-dots"></i>
+                        </button>
+                    `;
+                }
+
+                return `
+                    <div class="friend-account-row">
+                        <div class="friend-account-info">
+                            <div class="conv-avatar-circle ${isFriend ? 'active-avatar' : ''}">${escapeHtml(initials)}</div>
+                            <div class="min-w-0">
+                                <div class="friend-account-name text-truncate">${escapeHtml(acc.name)}</div>
+                                <div class="friend-account-email text-truncate">${escapeHtml(acc.email)}</div>
+                            </div>
+                        </div>
+                        <div class="friend-actions">
+                            ${actionButtonsHtml}
+                        </div>
+                    </div>
+                `;
+            })
+            .join('');
+    }
+
+    // Gắn sự kiện cho các nút trong danh sách Kết bạn
+    container.querySelectorAll('[data-send-freq-id]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            sendFriendRequest(btn.getAttribute('data-send-freq-id'));
+        });
+    });
+
+    container.querySelectorAll('[data-accept-req-id]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            acceptFriendRequest(btn.getAttribute('data-accept-req-id'));
+        });
+    });
+
+    container.querySelectorAll('[data-reject-req-id]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            cancelOrRejectFriendRequest(btn.getAttribute('data-reject-req-id'));
+        });
+    });
+
+    container.querySelectorAll('[data-unfriend-id]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            removeFriend(btn.getAttribute('data-unfriend-id'));
+        });
+    });
+
+    container.querySelectorAll('[data-chat-friend-id]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const friendId = btn.getAttribute('data-chat-friend-id');
+            closeFriendsModal();
+            openOrCreateDirectConversation(friendId);
+        });
+    });
+}
+
+// --------------------------------------------------------------------------
 // 10. KHỞI TẠO SỰ KIỆN KHI TRANG TẢI XONG
 // --------------------------------------------------------------------------
 document.addEventListener('DOMContentLoaded', () => {
     updateCurrentUserProfileUI();
+    updateFriendBadges();
+    renderFriendsModalList();
     renderSavedAccountsOnAuthScreen();
     renderActiveNowStrip();
     renderConversationList();
@@ -2035,6 +2590,28 @@ document.addEventListener('DOMContentLoaded', () => {
     selectConversation(activeConversationId);
 
     connectWebSocket();
+
+    // Sự kiện Modal Kết bạn & Danh bạ tài khoản
+    document.getElementById('btnOpenFriendsModal')?.addEventListener('click', () => openFriendsModal('discover'));
+    document.getElementById('btnTopbarFriends')?.addEventListener('click', () => openFriendsModal('requests'));
+    document.getElementById('btnCloseFriendsModal')?.addEventListener('click', closeFriendsModal);
+    document.getElementById('friendsModalBackdrop')?.addEventListener('click', (e) => {
+        if (e.target.id === 'friendsModalBackdrop') closeFriendsModal();
+    });
+    document.querySelectorAll('[data-friends-tab]').forEach((tabBtn) => {
+        tabBtn.addEventListener('click', () => {
+            currentFriendsTab = tabBtn.getAttribute('data-friends-tab');
+            document.querySelectorAll('[data-friends-tab]').forEach((b) => {
+                b.classList.toggle('active', b === tabBtn);
+            });
+            renderFriendsModalList();
+        });
+    });
+    document.getElementById('friendSearchOrEmailInput')?.addEventListener('input', (e) => {
+        friendSearchFilter = e.target.value.trim();
+        renderFriendsModalList();
+    });
+    document.getElementById('quickAddFriendForm')?.addEventListener('submit', handleQuickAddFriendByInput);
 
     // Form Đăng nhập bằng Tên & Email thật
     const loginForm = document.getElementById('loginForm');
