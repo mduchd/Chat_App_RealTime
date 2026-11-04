@@ -1,6 +1,21 @@
 {
   "version": 2,
-  "buildCommand": "",
-  "outputDirectory": "src/main/resources/static",
-  "cleanUrls": true
+  "rewrites": [
+    {
+      "source": "/",
+      "destination": "/src/main/resources/static/index.html"
+    },
+    {
+      "source": "/index.html",
+      "destination": "/src/main/resources/static/index.html"
+    },
+    {
+      "source": "/css/:path*",
+      "destination": "/src/main/resources/static/css/:path*"
+    },
+    {
+      "source": "/js/:path*",
+      "destination": "/src/main/resources/static/js/:path*"
+    }
+  ]
 }
