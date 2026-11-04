@@ -13,6 +13,15 @@ import org.springframework.web.util.UriComponentsBuilder;
 import java.security.Principal;
 import java.util.Map;
 
+// Các thư viện import thêm cho chốt chặn bảo mật 
+import org.springframework.messaging.simp.config.ChannelRegistration;
+import org.springframework.messaging.support.ChannelInterceptor;
+import org.springframework.messaging.Message;
+import org.springframework.messaging.MessageChannel;
+import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
+import org.springframework.messaging.simp.stomp.StompCommand;
+import org.springframework.messaging.support.MessageHeaderAccessor;
+
 @Configuration
 @EnableWebSocketMessageBroker
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
@@ -43,5 +52,27 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         };
         registry.addEndpoint("/ws").setHandshakeHandler(handler);
         registry.addEndpoint("/ws-sockjs").setHandshakeHandler(handler).withSockJS();
+    }
+    //  Kiểm tra quyền và chặn đứng truy cập trái phép
+    @Override
+    public void configureClientInboundChannel(ChannelRegistration registration) {
+        registration.interceptors(new ChannelInterceptor() {
+            @Override
+            public Message<?> preSend(Message<?> message, MessageChannel channel) {
+                StompHeaderAccessor accessor = MessageHeaderAccessor.getAccessor(message, StompHeaderAccessor.class);
+                
+                // Khi có yêu cầu bắt đầu kết nối (CONNECT)
+                if (StompCommand.CONNECT.equals(accessor.getCommand())) {
+                    Principal user = accessor.getUser();
+                    
+                    // Nếu danh tính bị null (chưa đăng nhập và không dùng demo) -> Đuổi ra ngoài
+                    if (user == null) {
+                        System.err.println("Từ chối truy cập WebSocket: Người dùng chưa xác thực!");
+                        throw new IllegalArgumentException("Từ chối truy cập: Bạn chưa đăng nhập!");
+                    }
+                }
+                return message;
+            }
+        });
     }
 }
