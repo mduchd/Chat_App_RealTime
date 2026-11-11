@@ -73,8 +73,56 @@ const DEFAULT_ACCOUNTS = [
     }
 ];
 
-// Khởi tạo người dùng của Tab hiện tại (cho phép mỗi Tab đăng nhập 1 người khác nhau)
-let CURRENT_USER = loadTabUser() || { ...DEFAULT_ACCOUNTS[0] };
+// Khởi tạo biến rỗng để chứa dữ liệu thật từ Backend
+let CURRENT_USER = null;
+
+// Hàm kết nối Frontend với API lấy thông tin người dùng 
+async function fetchRealGoogleUser() {
+    try {
+        const response = await fetch('/api/me');
+        const data = await response.json();
+
+        if (data.isAuthenticated) {
+            // Nếu đã đăng nhập Google, gán thông tin thật vào CURRENT_USER
+            CURRENT_USER = {
+                id: 'user-google-' + data.email.replace(/[^a-z0-9]/g, ''), 
+                name: data.name,
+                shortName: data.name.split(/\s+/).slice(-2).join(' '),
+                email: data.email,
+                online: true,
+                avatar: data.picture || `https://ui-avatars.com/api/?name=${encodeURIComponent(data.name)}&background=1d72b8&color=fff`
+            };
+            
+            // Lưu vào bộ nhớ tạm
+            sessionStorage.removeItem(STORAGE_KEYS.TAB_USER); 
+            saveTabUser(CURRENT_USER);
+
+            // Bắt đầu chạy giao diện ChatSpace
+            initializeAppUI();
+        } else {
+            // Nếu chưa đăng nhập, bắt buộc hiện màn hình đăng nhập
+            document.getElementById('authScreen').classList.remove('d-none');
+        }
+    } catch (error) {
+        console.error("Lỗi khi kết nối với API /api/me:", error);
+    }
+}
+
+// Hàm khởi động giao diện (gói gọn các bước render)
+function initializeAppUI() {
+    CONVERSATIONS = loadConversations();
+    FRIENDSHIPS = loadFriendships();
+    updateCurrentUserProfileUI();
+    updateFriendBadges();
+    renderFriendsModalList();
+    renderSavedAccountsOnAuthScreen();
+    renderActiveNowStrip();
+    renderConversationList();
+    renderNotifications();
+    renderBlockedUsersInSettings();
+    selectConversation(activeConversationId);
+    connectWebSocket();
+}
 
 const USER_SETTINGS = {
     activeStatus: true,
@@ -267,7 +315,7 @@ const INITIAL_CONVERSATIONS = [
     }
 ];
 
-let CONVERSATIONS = loadConversations();
+let CONVERSATIONS = [];
 
 // Dữ liệu Kết bạn & Lời mời kết bạn mặc định giữa các tài khoản
 const INITIAL_FRIENDSHIPS = {
@@ -286,7 +334,7 @@ const INITIAL_FRIENDSHIPS = {
     ]
 };
 
-let FRIENDSHIPS = loadFriendships();
+let FRIENDSHIPS = null;
 let currentFriendsTab = 'discover';
 let friendSearchFilter = '';
 
@@ -2644,19 +2692,12 @@ function renderFriendsModalList() {
 // 10. KHỞI TẠO SỰ KIỆN KHI TRANG TẢI XONG
 // --------------------------------------------------------------------------
 document.addEventListener('DOMContentLoaded', () => {
-    updateCurrentUserProfileUI();
-    updateFriendBadges();
-    renderFriendsModalList();
-    renderSavedAccountsOnAuthScreen();
-    renderActiveNowStrip();
-    renderConversationList();
-    renderNotifications();
-    renderBlockedUsersInSettings();
-    selectConversation(activeConversationId);
-
-    connectWebSocket();
+    // KÍCH HOẠT QUÁ TRÌNH LẤY DATA THẬT
+    fetchRealGoogleUser();
+    
 
     // Sự kiện Modal Kết bạn & Danh bạ tài khoản
+ 
     document.getElementById('btnOpenFriendsModal')?.addEventListener('click', () => openFriendsModal('discover'));
     document.getElementById('btnTopbarFriends')?.addEventListener('click', () => openFriendsModal('requests'));
     document.getElementById('btnCloseFriendsModal')?.addEventListener('click', closeFriendsModal);
@@ -2991,19 +3032,7 @@ document.addEventListener('DOMContentLoaded', () => {
     authScreen?.addEventListener('click', (e) => {
         if (e.target === authScreen) authScreen.classList.add('d-none');
     });
-    document.getElementById('btnGoogleOAuth')?.addEventListener('click', (e) => {
-        e.preventDefault();
-        const nameVal = document.getElementById('loginNameInput')?.value.trim() || CURRENT_USER.name;
-        const emailVal = document.getElementById('loginEmailInput')?.value.trim() || CURRENT_USER.email;
-        loginAsUser({
-            id: 'user-google-' + emailVal.toLowerCase().replace(/[^a-z0-9]/g, ''),
-            name: nameVal,
-            shortName: nameVal.split(/\s+/).slice(-2).join(' '),
-            email: emailVal,
-            online: true,
-            avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(nameVal)}&background=0095f6&color=fff&bold=true`
-        });
-    });
+    
 
     // Chọn Emoji
     const emojiPopover = document.getElementById('emojiPickerPopover');
@@ -3074,3 +3103,4 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 });
+    

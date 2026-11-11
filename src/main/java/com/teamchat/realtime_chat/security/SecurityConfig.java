@@ -15,11 +15,11 @@ public class SecurityConfig {
         http
             .csrf(csrf -> csrf.disable()) // Tạm tắt CSRF để dễ dàng test API ở môi trường dev
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/", "/login**", "/error", "/css/**", "/js/**").permitAll()
+                .requestMatchers("/","/api/me","/index.html", "/login**", "/error", "/css/**", "/js/**").permitAll()
                 .anyRequest().authenticated()
             )
             .oauth2Login(oauth2 -> oauth2
-                .defaultSuccessUrl("/chat", true) // Đăng nhập Google xong sẽ chuyển hướng tới /chat
+                .defaultSuccessUrl("/", true) // Đăng nhập Google xong sẽ chuyển hướng tới trang gốc (index.html)
             );
         return http.build();
     }
