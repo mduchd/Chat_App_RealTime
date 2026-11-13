@@ -97,7 +97,7 @@ function getBackendUrl() {
     if (['localhost', '127.0.0.1'].includes(window.location.hostname)) {
         return '';
     }
-    return (window.BACKEND_URL_DEFAULT || '').replace(/\/+$/, '');
+    return (window.BACKEND_URL_DEFAULT || 'https://chatapprealtime-production-ea7b4569.up.railway.app').replace(/\/+$/, '');
 }
 
 // Kênh đồng bộ thời gian thực giữa các Tab trình duyệt (Multi-Tab Realtime Bus)
@@ -2588,19 +2588,19 @@ function renderFriendsModalList() {
 
 async function checkBackendAuth() {
     try {
-        const res = await fetch('/api/me');
+        const res = await fetch(`${getBackendUrl()}/api/me`, { credentials: 'include' });
         if (res.ok) {
             const data = await res.json();
             if (data && data.isAuthenticated && data.email) {
                 const userObj = {
-                    id: 'user-google-' + data.email.toLowerCase().replace(/[^a-z0-9]/g, ''),
+                    id: data.id,
                     name: data.name || data.email,
                     shortName: (data.name ? data.name.split(/\s+/).slice(-2).join(' ') : data.email),
                     email: data.email,
                     online: true,
                     avatar: data.picture || `https://ui-avatars.com/api/?name=${encodeURIComponent(data.name || 'U')}&background=0095f6&color=fff&bold=true`
                 };
-                if (CURRENT_USER.email !== userObj.email || CURRENT_USER.name !== userObj.name) {
+                if (CURRENT_USER.id !== userObj.id || CURRENT_USER.email !== userObj.email || CURRENT_USER.name !== userObj.name) {
                     loginAsUser(userObj);
                 }
             }
@@ -3202,7 +3202,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e.target === authScreen && CURRENT_USER.id) authScreen.classList.add('d-none');
     });
     document.getElementById('btnGoogleOAuth')?.addEventListener('click', () => {
-        window.location.href = '/oauth2/authorization/google';
+        window.location.href = `${getBackendUrl()}/oauth2/authorization/google`;
     });
 
     // Chọn Emoji

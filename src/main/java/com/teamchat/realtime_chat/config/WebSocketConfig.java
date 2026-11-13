@@ -52,10 +52,10 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         };
         registry.addEndpoint("/ws")
                 .setHandshakeHandler(handler)
-                .setAllowedOriginPatterns("*");
+                .setAllowedOriginPatterns("https://realtime-chat-six-sand.vercel.app", "https://chatapprealtime-production-ea7b4569.up.railway.app", "http://localhost:[*]", "http://127.0.0.1:[*]");
         registry.addEndpoint("/ws-sockjs")
                 .setHandshakeHandler(handler)
-                .setAllowedOriginPatterns("*")
+                .setAllowedOriginPatterns("https://realtime-chat-six-sand.vercel.app", "https://chatapprealtime-production-ea7b4569.up.railway.app", "http://localhost:[*]", "http://127.0.0.1:[*]")
                 .withSockJS();
     }
     //  Kiểm tra quyền và chặn đứng truy cập trái phép

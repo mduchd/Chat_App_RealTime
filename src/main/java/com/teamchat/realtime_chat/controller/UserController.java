@@ -17,6 +17,7 @@ public class UserController {
     public Map<String, Object> getCurrentUser(@AuthenticationPrincipal OAuth2User principal) {
         Map<String, Object> userInfo = new HashMap<>();
         if (principal != null) {
+            userInfo.put("id", principal.getName());
             userInfo.put("name", principal.getAttribute("name"));
             userInfo.put("email", principal.getAttribute("email"));
             userInfo.put("picture", principal.getAttribute("picture")); 
