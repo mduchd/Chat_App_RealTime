@@ -3201,7 +3201,8 @@ document.addEventListener('DOMContentLoaded', () => {
     authScreen?.addEventListener('click', (e) => {
         if (e.target === authScreen && CURRENT_USER.id) authScreen.classList.add('d-none');
     });
-    document.getElementById('btnGoogleOAuth')?.addEventListener('click', () => {
+    document.getElementById('btnGoogleOAuth')?.addEventListener('click', (event) => {
+        event.preventDefault();
         window.location.href = `${getBackendUrl()}/oauth2/authorization/google`;
     });
 
