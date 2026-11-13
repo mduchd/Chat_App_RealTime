@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CHATSPACE — Ứng dụng Chat Thời Gian Thực</title>
+
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Bootstrap 5.3 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- FontAwesome 6 Icons -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" rel="stylesheet">
+
+    <!-- Custom ChatSpace Minimalist Stylesheet -->
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+    <!-- =====================================================================
+         1. MÀN HÌNH ĐĂNG NHẬP / CHUYỂN TÀI KHOẢN
+         ===================================================================== -->
+    <section id="authScreen" class="auth-screen d-none">
+        <div class="auth-card position-relative">
+            <button type="button" id="btnCloseAuthScreen" class="icon-btn position-absolute top-0 end-0 m-2" title="Đóng">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+            <div class="auth-brand">
+                <div class="brand-logo-circle">CS</div>
+                <h1 class="auth-title">CHATSPACE</h1>
+                <p class="auth-subtitle">
+                    Hệ thống nhắn tin trực tuyến thời gian thực qua WebSocket STOMP.
+                </p>
+            </div>
+
+            <form id="loginForm" class="auth-form text-start" autocomplete="on">
+                <div class="mb-2">
+                    <input
+                        type="text"
+                        id="loginNameInput"
+                        class="form-control auth-input"
+                        placeholder="Tên hiển thị của bạn"
+                        required
+                    >
+                </div>
+
+                <div class="mb-3">
+                    <input
+                        type="email"
+                        id="loginEmailInput"
+                        class="form-control auth-input"
+                        placeholder="Email đăng nhập"
+                        required
+                    >
+                </div>
+
+                <button type="submit" class="btn-cs-primary w-100">
+                    Đăng nhập vào ChatSpace
+                </button>
+            </form>
+
+            <div class="auth-divider">
+                <span>HOẶC</span>
+            </div>
+
+            <div class="auth-actions">
+                <a href="/oauth2/authorization/google" id="btnGoogleOAuth" class="btn-google-oauth">
+                    <svg class="google-icon" viewBox="0 0 24 24" width="18" height="18" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                        <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                        <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+                        <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                    </svg>
+                    <span>Đăng nhập bằng Google</span>
+                </a>
+            </div>
+
+            <div class="auth-quick-accounts mt-3 pt-3 border-top text-start">
+                <div class="small text-secondary mb-2">Chọn nhanh tài khoản để test đa tab:</div>
+                <div class="d-flex flex-wrap gap-1" id="savedAccountsList"></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- =====================================================================
+         2. KHUNG CỬA SỔ CHATSPACE TỐI GIẢN THEO ĐÚNG MẪU THIẾT KẾ
+         ===================================================================== -->
+    <div class="chatspace-viewport">
+        <div id="appContainer" class="chatspace-window">
+
+            <!-- THANH TIÊU ĐỀ TRÊN CÙNG MÀU XANH Đậm (CHATSPACE TOP BAR) -->
+            <header class="chatspace-topbar">
+                <div class="d-flex align-items-center gap-3">
+                    <span class="topbar-brand">CHATSPACE</span>
+                    <span class="topbar-ws-pill" title="Trạng thái kết nối WebSocket STOMP">
+                        <span id="wsStatusDot" class="ws-dot connected"></span>
+                        <span id="wsStatusText">WebSocket sẵn sàng</span>
+                    </span>
+                </div>
+
+                <div class="topbar-right">
+                    <!-- Nút Tài khoản hiện tại (nhấn để đổi tài khoản test 2 tab) -->
+                    <button type="button" class="topbar-user-btn" id="btnHeaderSwitchAccount" title="Đổi tài khoản người dùng">
+                        <span class="topbar-user-initials" id="topbarUserInitials">CS</span>
+                        <span id="sidebarCurrentUsername">Đăng nhập</span>
+                        <i class="fa-solid fa-chevron-down" style="font-size: 0.65rem;"></i>
+                    </button>
+
+                    <!-- Nút Kết bạn & Lời mời kết bạn -->
+                    <button type="button" class="topbar-icon-btn" id="btnTopbarFriends" title="Kết bạn & Danh bạ">
+                        <i class="fa-solid fa-user-plus"></i>
+                        <span id="topbarFriendBadge" class="topbar-badge d-none">0</span>
+                    </button>
+
+                    <!-- Nút Thông báo -->
+                    <div class="position-relative">
+                        <button type="button" class="topbar-icon-btn" id="btnNotifications" title="Thông báo">
+                            <i class="fa-regular fa-bell"></i>
+                            <span id="notificationBadge" class="topbar-badge d-none">0</span>
+                        </button>
+
+                        <div id="notificationPopover" class="notification-popover d-none">
+                            <div class="notif-header">
+                                <span class="fw-semibold">Thông báo</span>
+                                <button type="button" id="btnMarkAllNotifRead" class="btn-link-xs">
+                                    Đánh dấu đã đọc
+                                </button>
+                            </div>
+                            <div id="notificationList" class="notif-list"></div>
+                        </div>
+                    </div>
+
+                    <!-- Nút Chế độ tối -->
+                    <button type="button" class="topbar-icon-btn" id="btnQuickDarkMode" title="Đổi giao diện Sáng / Tối">
+                        <i class="fa-regular fa-moon"></i>
+                    </button>
+
+                    <!-- Nút Cài đặt -->
+                    <button type="button" class="topbar-icon-btn" id="btnOpenSettings" title="Cài đặt">
+                        <i class="fa-solid fa-gear"></i>
+                    </button>
+
+                    <!-- 3 chấm tròn góc cửa sổ đúng theo ảnh mẫu -->
+                    <div class="window-dots" aria-hidden="true">
+                        <span class="win-dot blue"></span>
+                        <span class="win-dot yellow"></span>
+                        <span class="win-dot green"></span>
+                    </div>
+                </div>
+            </header>
+
+            <!-- THÂN CỬA SỔ: CỘT HỘI THOẠI BÊN TRÁI + KHUNG CHAT BÊN PHẢI -->
+            <div class="chatspace-body">
+
+                <!-- ================= CỘT TRÁI: HỘI THOẠI ================= -->
+                <aside id="sidebarPanel" class="sidebar-card">
+                    <div class="sidebar-title-row">
+                        <h2 class="sidebar-heading" id="sidebarHeadingTitle">Hội thoại</h2>
+                        <div class="sidebar-header-actions">
+                            <button type="button" class="sidebar-action-btn" id="btnOpenFriendsModal" title="Kết bạn & Lời mời kết bạn">
+                                <i class="fa-solid fa-user-plus"></i>
+                                <span id="sidebarFriendBadge" class="friend-req-pill d-none">0</span>
+                            </button>
+                            <button type="button" class="sidebar-action-btn" id="btnOpenCreateGroup" title="Tạo nhóm chat mới">
+                                <i class="fa-solid fa-users"></i>
+                                <span class="action-plus-sign">+</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Ô tìm kiếm trắng "Tìm người / tìm nhóm..." đúng theo mẫu -->
+                    <div class="sidebar-search-box">
+                        <input
+                            type="text"
+                            id="searchConversationInput"
+                            class="sidebar-search-input"
+                            placeholder="Tìm người / tìm nhóm..."
+                            autocomplete="off"
+                        >
+                        <button type="button" id="btnClearSearch" class="btn-clear-search d-none" aria-label="Xóa tìm kiếm">
+                            <i class="fa-solid fa-circle-xmark"></i>
+                        </button>
+                    </div>
+
+                    <!-- Bộ lọc gọn nhẹ: Tất cả / Nhóm / Chưa đọc / Lưu trữ -->
+                    <div class="ig-tabs" role="tablist">
+                        <button type="button" class="tab-pill active" data-filter="all">Tất cả</button>
+                        <button type="button" class="tab-pill" data-filter="GROUP">Nhóm</button>
+                        <button type="button" class="tab-pill" data-filter="unread">
+                            Chưa đọc
+                            <span id="railUnreadBadge" class="tab-mini-count d-none">0</span>
+                        </button>
+                        <button type="button" class="tab-pill" data-filter="archived">
+                            Lưu trữ
+                            <span id="archivedCountBadge" class="tab-mini-count d-none">0</span>
+                        </button>
+                    </div>
+
+                    <!-- Danh sách cuộc trò chuyện -->
+                    <div class="conversation-list" id="conversationList" role="listbox" aria-label="Danh sách hội thoại"></div>
+                </aside>
+
+                <!-- ================= CỘT PHẢI: NỘI DUNG CHAT ================= -->
+                <main id="chatMainPanel" class="chat-main-panel">
+
+                    <!-- Trạng thái trống khi chưa chọn cuộc trò chuyện -->
+                    <div id="emptyChatState" class="empty-chat-state d-none">
+                        <div class="empty-state-content">
+                            <div class="empty-icon-circle">
+                                <i class="fa-regular fa-comments"></i>
+                            </div>
+                            <h3 class="empty-title">Chọn một hội thoại</h3>
+                            <p class="empty-description">
+                                Chọn một người hoặc nhóm ở cột bên trái để bắt đầu nhắn tin thời gian thực.
+                            </p>
+                            <button type="button" class="btn-cs-primary" id="btnEmptyCreateGroup">
+                                + Tạo nhóm chat mới
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Khung hội thoại đang mở -->
+                    <div id="activeChatView" class="active-chat-view">
+                        <!-- Header tên người nhận bên trái + Trạng thái xanh bên phải giống hệt ảnh mẫu -->
+                        <header class="chat-header">
+                            <div class="d-flex align-items-center gap-2 min-w-0">
+                                <button type="button" id="btnBackToSidebar" class="icon-btn d-md-none" aria-label="Quay lại">
+                                    <i class="fa-solid fa-arrow-left"></i>
+                                </button>
+
+                                <div id="chatHeaderAvatarWrapper" class="d-none"></div>
+
+                                <h3 class="chat-partner-name text-truncate mb-0" id="chatHeaderName"></h3>
+
+                                <span id="chatHeaderBadge" class="badge-chat-type d-none">Cá nhân</span>
+
+                                <span id="chatHeaderPinnedIcon" class="header-state-icon d-none" title="Đã ghim">
+                                    <i class="fa-solid fa-thumbtack"></i>
+                                </span>
+                                <span id="chatHeaderMutedIcon" class="header-state-icon d-none" title="Đã tắt thông báo">
+                                    <i class="fa-solid fa-bell-slash"></i>
+                                </span>
+                            </div>
+
+                            <div class="chat-header-right">
+                                <div class="chat-partner-status">
+                                    <span class="status-dot online" id="chatHeaderDot"></span>
+                                    <span id="chatHeaderStatusText">Đang hoạt động</span>
+                                </div>
+
+                                <div class="chat-header-actions">
+                                    <button type="button" class="icon-btn d-none" id="btnHeaderAddMember" title="Thêm thành viên vào nhóm">
+                                        <i class="fa-solid fa-user-plus"></i>
+                                    </button>
+                                    <button type="button" class="icon-btn" id="btnAudioCall" title="Gọi thoại">
+                                        <i class="fa-solid fa-phone"></i>
+                                    </button>
+                                    <button type="button" class="icon-btn" id="btnVideoCall" title="Gọi video">
+                                        <i class="fa-solid fa-video"></i>
+                                    </button>
+                                    <button type="button" class="icon-btn" id="btnToggleInfoDrawer" title="Tùy chọn & Thông tin hội thoại">
+                                        <i class="fa-solid fa-ellipsis-vertical"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </header>
+
+                        <!-- Thanh tìm kiếm tin nhắn trong hội thoại -->
+                        <div id="inChatSearchBar" class="in-chat-search-bar d-none">
+                            <input
+                                type="text"
+                                id="inChatSearchInput"
+                                class="form-control form-control-sm"
+                                placeholder="Tìm kiếm nội dung tin nhắn..."
+                            >
+                            <button type="button" id="btnCloseInChatSearch" class="btn-link-xs">
+                                Đóng
+                            </button>
+                        </div>
+
+                        <!-- Vùng hiển thị tin nhắn + Ngăn thông tin ẩn/hiện bên phải -->
+                        <div class="chat-body-split">
+                            <div class="chat-conversation-column">
+                                <!-- Luồng tin nhắn -->
+                                <div class="chat-log" id="chatLog" aria-live="polite"></div>
+
+                                <!-- Chỉ báo đang nhập -->
+                                <div id="typingIndicatorBar" class="typing-indicator-bar d-none">
+                                    <div class="typing-dots">
+                                        <span></span><span></span><span></span>
+                                    </div>
+                                    <span id="typingUserText" class="small text-secondary">Đang nhập...</span>
+                                </div>
+
+                                <!-- Cảnh báo khi chặn -->
+                                <div id="blockedBanner" class="blocked-banner d-none">
+                                    <span>Bạn đã chặn hội thoại này.</span>
+                                    <button type="button" id="btnUnblockFromBanner" class="btn-unblock-pill">
+                                        Bỏ chặn
+                                    </button>
+                                </div>
+
+                                <!-- Khung đang trả lời tin nhắn -->
+                                <div id="replyPreviewBanner" class="reply-preview-banner d-none">
+                                    <div class="min-w-0">
+                                        <div class="reply-banner-title">
+                                            Đang trả lời <strong id="replyTargetSender">Người dùng</strong>
+                                        </div>
+                                        <div id="replyTargetText" class="reply-banner-snippet text-truncate">Nội dung tin nhắn</div>
+                                    </div>
+                                    <button type="button" id="btnCancelReply" class="icon-btn" title="Hủy trả lời">
+                                        <i class="fa-solid fa-xmark"></i>
+                                    </button>
+                                </div>
+
+                                <!-- Ô nhập tin nhắn bo tròn + Nút "Gửi" màu xanh dương đúng theo mẫu -->
+                                <footer id="chatInputFooter" class="chat-input-area">
+                                    <div id="emojiPickerPopover" class="emoji-popover d-none">
+                                        <button type="button" class="emoji-item">👍</button>
+                                        <button type="button" class="emoji-item">❤️</button>
+                                        <button type="button" class="emoji-item">😂</button>
+                                        <button type="button" class="emoji-item">😮</button>
+                                        <button type="button" class="emoji-item">😢</button>
+                                        <button type="button" class="emoji-item">🔥</button>
+                                        <button type="button" class="emoji-item">🎉</button>
+                                        <button type="button" class="emoji-item">🙌</button>
+                                    </div>
+
+                                    <form id="messageForm" class="cs-composer-bar" autocomplete="off">
+                                        <button type="button" class="composer-tool-btn" id="btnToggleEmoji" title="Chèn biểu tượng cảm xúc">
+                                            <i class="fa-regular fa-face-smile"></i>
+                                        </button>
+
+                                        <button type="button" class="composer-tool-btn" id="btnSendImage" title="Gửi hình ảnh">
+                                            <i class="fa-regular fa-image"></i>
+                                        </button>
+                                        <input type="file" id="imageAttachmentInput" accept="image/*" class="d-none">
+
+                                        <button type="button" class="composer-tool-btn" id="btnAttachFile" title="Đính kèm tệp">
+                                            <i class="fa-solid fa-paperclip"></i>
+                                        </button>
+                                        <input type="file" id="fileAttachmentInput" class="d-none">
+
+                                        <input
+                                            type="text"
+                                            id="messageInput"
+                                            class="cs-message-input"
+                                            placeholder="Nhập tin nhắn..."
+                                            aria-label="Nhập tin nhắn"
+                                        >
+
+                                        <button type="submit" id="btnSendMessage" class="btn-cs-send">
+                                            Gửi
+                                        </button>
+                                    </form>
+                                </footer>
+                            </div>
+
+                            <!-- Ngăn Tùy chọn & Thông tin hội thoại (mặc định ẩn để giao diện đơn giản đúng mẫu, nhấn ⋮ để mở) -->
+                            <aside id="chatInfoDrawer" class="chat-info-drawer d-none">
+                                <div class="drawer-header-title">Thông tin hội thoại</div>
+
+                                <div class="drawer-profile">
+                                    <div id="drawerAvatar" class="mb-2"></div>
+                                    <h4 id="drawerName" class="drawer-title mb-1">Tên hội thoại</h4>
+                                    <p id="drawerStatus" class="drawer-subtitle mb-3">Đang hoạt động</p>
+
+                                    <div class="drawer-quick-actions">
+                                        <button type="button" class="drawer-quick-btn" id="drawerBtnPin">
+                                            <span class="quick-icon"><i class="fa-solid fa-thumbtack"></i></span>
+                                            <span id="drawerPinLabel">Ghim</span>
+                                        </button>
+                                        <button type="button" class="drawer-quick-btn" id="drawerBtnMute">
+                                            <span class="quick-icon"><i class="fa-regular fa-bell"></i></span>
+                                            <span id="drawerMuteLabel">Tắt TB</span>
+                                        </button>
+                                        <button type="button" class="drawer-quick-btn" id="drawerBtnSearchInChat">
+                                            <span class="quick-icon"><i class="fa-solid fa-magnifying-glass"></i></span>
+                                            <span>Tìm tin</span>
+                                        </button>
+                                        <button type="button" class="drawer-quick-btn" id="drawerBtnArchive">
+                                            <span class="quick-icon"><i class="fa-solid fa-box-archive"></i></span>
+                                            <span id="drawerArchiveLabel">Lưu trữ</span>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <!-- Đổi tên & Chủ đề -->
+                                <div class="drawer-section">
+                                    <div class="drawer-section-title">Tùy chỉnh</div>
+                                    <div class="px-2 py-1">
+                                        <div class="theme-color-swatches" id="themeColorSwatches">
+                                            <button type="button" class="theme-swatch active" data-theme-color="#1d72b8" style="background: #1d72b8;" title="Xanh ChatSpace"></button>
+                                            <button type="button" class="theme-swatch" data-theme-color="#0d9488" style="background: #0d9488;" title="Xanh Ngọc"></button>
+                                            <button type="button" class="theme-swatch" data-theme-color="#6366f1" style="background: #6366f1;" title="Tím Indigo"></button>
+                                            <button type="button" class="theme-swatch" data-theme-color="#e11d48" style="background: #e11d48;" title="Đỏ"></button>
+                                            <button type="button" class="theme-swatch" data-theme-color="#334155" style="background: #334155;" title="Xám Đậm"></button>
+                                        </div>
+                                    </div>
+                                    <button type="button" class="drawer-list-btn" id="drawerBtnRenameConv">
+                                        <i class="fa-solid fa-pen"></i>
+                                        <span id="drawerRenameLabel">Đổi tên hội thoại</span>
+                                    </button>
+                                </div>
+
+                                <!-- Quản lý thành viên nhóm -->
+                                <div id="drawerGroupSection" class="drawer-section d-none">
+                                    <div class="d-flex align-items-center justify-content-between px-2 pb-1">
+                                        <span class="drawer-section-title p-0">Thành viên (<span id="drawerMemberCount">0</span>)</span>
+                                        <button type="button" id="drawerBtnAddMember" class="btn-link-xs">
+                                            + Thêm người
+                                        </button>
+                                    </div>
+                                    <div id="drawerMembersList" class="drawer-members-list"></div>
+                                </div>
+
+                                <!-- Tệp đã chia sẻ -->
+                                <div class="drawer-section">
+                                    <div class="drawer-section-title">Tệp đính kèm</div>
+                                    <div id="drawerSharedFiles" class="drawer-shared-files px-2 small text-secondary">
+                                        Chưa có tệp đính kèm nào
+                                    </div>
+                                </div>
+
+                                <!-- Quản lý quyền riêng tư -->
+                                <div class="drawer-section mt-auto pt-2 border-top">
+                                    <button type="button" class="drawer-list-btn" id="drawerBtnMarkUnread">
+                                        <i class="fa-regular fa-envelope"></i>
+                                        <span>Đánh dấu chưa đọc</span>
+                                    </button>
+                                    <button type="button" class="drawer-list-btn text-danger" id="drawerBtnBlock">
+                                        <i class="fa-solid fa-ban"></i>
+                                        <span id="drawerBlockLabel">Chặn</span>
+                                    </button>
+                                    <button type="button" class="drawer-list-btn text-danger" id="drawerBtnDelete">
+                                        <i class="fa-regular fa-trash-can"></i>
+                                        <span>Xóa hội thoại</span>
+                                    </button>
+                                </div>
+                            </aside>
+                        </div>
+                    </div>
+                </main>
+            </div>
+        </div>
+    </div>
+
+    <!-- =====================================================================
+         3. MENU NGỮ CẢNH (`...` HOẶC CHUỘT PHẢI VÀO HỘI THOẠI)
+         ===================================================================== -->
+    <div id="conversationContextMenu" class="conv-context-menu d-none" role="menu">
+        <button type="button" class="context-menu-item" data-action="toggle-pin">
+            <i class="fa-solid fa-thumbtack"></i>
+            <span id="ctxPinText">Ghim hội thoại</span>
+        </button>
+        <button type="button" class="context-menu-item" data-action="toggle-unread">
+            <i class="fa-regular fa-envelope"></i>
+            <span id="ctxUnreadText">Đánh dấu chưa đọc</span>
+        </button>
+        <button type="button" class="context-menu-item" data-action="toggle-mute">
+            <i class="fa-regular fa-bell-slash"></i>
+            <span id="ctxMuteText">Tắt thông báo</span>
+        </button>
+        <button type="button" class="context-menu-item" data-action="toggle-archive">
+            <i class="fa-solid fa-box-archive"></i>
+            <span id="ctxArchiveText">Lưu trữ</span>
+        </button>
+        <hr class="context-menu-divider">
+        <button type="button" class="context-menu-item text-danger" data-action="toggle-block">
+            <i class="fa-solid fa-ban"></i>
+            <span id="ctxBlockText">Chặn</span>
+        </button>
+        <button type="button" class="context-menu-item text-danger" data-action="delete-chat">
+            <i class="fa-regular fa-trash-can"></i>
+            <span>Xóa hội thoại</span>
+        </button>
+    </div>
+
+    <!-- =====================================================================
+         4. MODAL TẠO NHÓM CHAT / THÊM THÀNH VIÊN
+         ===================================================================== -->
+    <div id="createGroupModalBackdrop" class="custom-modal-backdrop d-none">
+        <div class="custom-modal-card">
+            <div class="custom-modal-header">
+                <h6 class="mb-0 fw-bold" id="groupModalTitle">Tạo nhóm chat mới</h6>
+                <button type="button" class="icon-btn" id="btnCloseCreateGroup">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <form id="createGroupForm" class="custom-modal-body" autocomplete="off">
+                <div id="groupIdentityFields" class="mb-3">
+                    <label class="form-label small fw-semibold mb-1">Tên nhóm</label>
+                    <div class="d-flex gap-2 mb-2">
+                        <input
+                            type="text"
+                            id="groupNameInput"
+                            class="form-control form-control-sm"
+                            placeholder="VD: Nhóm Lập trình mạng..."
+                        >
+                        <input
+                            type="text"
+                            id="groupAvatarTextInput"
+                            class="form-control form-control-sm text-uppercase text-center fw-bold"
+                            style="width: 68px;"
+                            maxlength="3"
+                            placeholder="GR"
+                            title="Ký hiệu avatar nhóm"
+                        >
+                    </div>
+                    <input
+                        type="text"
+                        id="groupTopicDescInput"
+                        class="form-control form-control-sm"
+                        placeholder="Mô tả nhóm (tùy chọn)..."
+                    >
+                </div>
+
+                <div class="mb-2">
+                    <div class="d-flex align-items-center justify-content-between mb-1">
+                        <span class="small fw-semibold">Chọn thành viên (<span id="selectedMemberCountBadge">0</span>)</span>
+                    </div>
+                    <div id="selectedMemberChips" class="selected-member-chips mb-2"></div>
+
+                    <div class="d-flex gap-2 mb-2">
+                        <input
+                            type="text"
+                            id="searchMemberInput"
+                            class="form-control form-control-sm"
+                            placeholder="Tìm hoặc nhập tên người mới..."
+                        >
+                        <button type="button" id="btnAddCustomContact" class="btn btn-sm btn-outline-primary text-nowrap">
+                            + Thêm người
+                        </button>
+                    </div>
+                </div>
+
+                <div id="contactPickerList" class="contact-picker-list mb-3"></div>
+
+                <div class="d-flex justify-content-end gap-2">
+                    <button type="button" class="btn btn-sm btn-light border px-3" id="btnCancelCreateGroup">Hủy</button>
+                    <button type="submit" class="btn-cs-primary btn-sm px-3" id="btnSubmitGroupModal">
+                        <span id="btnSubmitGroupText">Tạo nhóm</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- =====================================================================
+         4B. MODAL KẾT BẠN & QUẢN LÝ DANH BẠ TÀI KHOẢN
+         ===================================================================== -->
+    <div id="friendsModalBackdrop" class="custom-modal-backdrop d-none">
+        <div class="custom-modal-card" style="max-width: 500px;">
+            <div class="custom-modal-header">
+                <h6 class="mb-0 fw-bold">
+                    <i class="fa-solid fa-user-group text-primary me-1"></i> Kết bạn & Danh bạ tài khoản
+                </h6>
+                <button type="button" class="icon-btn" id="btnCloseFriendsModal">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <div class="custom-modal-body">
+                <!-- 3 Tab: Tìm & Kết bạn | Lời mời kết bạn | Bạn bè của tôi -->
+                <div class="friends-modal-tabs mb-3">
+                    <button type="button" class="friends-tab-btn active" data-friends-tab="discover">
+                        Tìm tài khoản
+                    </button>
+                    <button type="button" class="friends-tab-btn" data-friends-tab="requests">
+                        Lời mời
+                        <span id="modalFriendReqCount" class="tab-mini-count d-none">0</span>
+                    </button>
+                    <button type="button" class="friends-tab-btn" data-friends-tab="friends">
+                        Bạn bè (<span id="modalFriendsCount">0</span>)
+                    </button>
+                </div>
+
+                <!-- Khung kết bạn nhanh bằng Email hoặc Tên tài khoản mới -->
+                <form id="quickAddFriendForm" class="quick-add-friend-box mb-3" autocomplete="off">
+                    <div class="small fw-semibold mb-1">Gửi lời mời kết bạn theo Tên hoặc Email:</div>
+                    <div class="d-flex gap-2">
+                        <input
+                            type="text"
+                            id="friendSearchOrEmailInput"
+                            class="form-control form-control-sm"
+                            placeholder="Nhập tên hoặc email tài khoản cần kết bạn..."
+                        >
+                        <button type="submit" class="btn-cs-primary btn-sm text-nowrap px-3">
+                            + Kết bạn
+                        </button>
+                    </div>
+                </form>
+
+                <!-- Danh sách hiển thị theo Tab đang chọn -->
+                <div id="friendsModalListContainer" class="friends-list-container"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- =====================================================================
+         5. MODAL CUỘC GỌI THOẠI / VIDEO
+         ===================================================================== -->
+    <div id="callModalBackdrop" class="custom-modal-backdrop d-none">
+        <div class="call-modal-card">
+            <div id="callAvatarWrap" class="mb-3"></div>
+            <h5 id="callPartnerName" class="fw-bold text-white mb-1">Tên người nhận</h5>
+            <p id="callStatusLabel" class="text-white-50 small mb-4">Đang kết nối cuộc gọi...</p>
+            <div class="d-flex justify-content-center gap-3">
+                <button type="button" class="call-control-btn" id="btnToggleCallMic" title="Tắt/Bật micro">
+                    <i class="fa-solid fa-microphone"></i>
+                </button>
+                <button type="button" class="call-control-btn end-call" id="btnEndCall" title="Kết thúc">
+                    <i class="fa-solid fa-phone-slash"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- =====================================================================
+         6. MODAL CÀI ĐẶT HỆ THỐNG
+         ===================================================================== -->
+    <div id="settingsModalBackdrop" class="custom-modal-backdrop d-none">
+        <div class="custom-modal-card">
+            <div class="custom-modal-header">
+                <h6 class="mb-0 fw-bold">Cài đặt hệ thống</h6>
+                <button type="button" class="icon-btn" id="btnCloseSettings">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <div class="custom-modal-body">
+                <div class="settings-profile-box justify-content-between">
+                    <div class="d-flex align-items-center gap-3 min-w-0">
+                        <div class="conv-avatar-circle active-avatar" id="settingsUserInitials">CS</div>
+                        <div class="min-w-0">
+                            <div class="fw-semibold text-truncate" id="settingsUserName"></div>
+                            <div class="small text-secondary text-truncate" id="settingsUserEmail"></div>
+                        </div>
+                    </div>
+                    <button type="button" class="btn-link-xs" id="btnLogoutFromSettings">
+                        Đổi tài khoản
+                    </button>
+                </div>
+
+                <div class="settings-group">
+                    <label class="settings-row">
+                        <div>
+                            <div class="settings-label">Trạng thái trực tuyến</div>
+                            <div class="settings-desc">Hiển thị chấm xanh đang hoạt động</div>
+                        </div>
+                        <input type="checkbox" class="form-check-input settings-switch" id="toggleActiveStatus" checked>
+                    </label>
+
+                    <label class="settings-row">
+                        <div>
+                            <div class="settings-label">Chế độ tối (Dark Mode)</div>
+                            <div class="settings-desc">Chuyển sang tông màu tối dịu mắt</div>
+                        </div>
+                        <input type="checkbox" class="form-check-input settings-switch" id="toggleDarkMode">
+                    </label>
+
+                    <label class="settings-row">
+                        <div>
+                            <div class="settings-label">Thông báo tin nhắn mới</div>
+                            <div class="settings-desc">Hiển thị thông báo khi có tin nhắn đến</div>
+                        </div>
+                        <input type="checkbox" class="form-check-input settings-switch" id="toggleDesktopNotif" checked>
+                    </label>
+
+                    <label class="settings-row">
+                        <div>
+                            <div class="settings-label">Âm thanh thông báo</div>
+                            <div class="settings-desc">Phát âm báo nhẹ khi nhận tin nhắn</div>
+                        </div>
+                        <input type="checkbox" class="form-check-input settings-switch" id="toggleSoundNotif" checked>
+                    </label>
+                </div>
+
+                <div class="settings-group">
+                    <div class="settings-group-title">Danh sách đã chặn (<span id="blockedCountLabel">0</span>)</div>
+                    <div id="blockedUsersList" class="blocked-users-list"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- =====================================================================
+         7. TOAST THÔNG BÁO GÓC MÀN HÌNH
+         ===================================================================== -->
+    <div id="toastContainer" class="chat-toast-container"></div>
+
+    <!-- =====================================================================
+         THƯ VIỆN JAVASCRIPT (Bootstrap 5, SockJS, STOMP.js & App Logic)
+         ===================================================================== -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1.6.1/dist/sockjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
