@@ -72,7 +72,9 @@ let CONTACTS_DIRECTORY = loadContactsDirectory();
 const NOTIFICATIONS = [];
 let CONVERSATIONS = loadConversations();
 
-let FRIENDSHIPS = loadFriendships();
+let FRIENDSHIPS = { accepted: [], requests: [] };
+let serverAuthenticated = false;
+let friendRefreshTimer = null;
 let currentFriendsTab = 'discover';
 let friendSearchFilter = '';
 
@@ -363,8 +365,7 @@ if (realtimeBus) {
 
         // Đồng bộ lại danh sách cuộc trò chuyện, danh bạ và kết bạn từ Kho lưu trữ chung
         CONVERSATIONS = loadConversations();
-        CONTACTS_DIRECTORY = loadContactsDirectory();
-        FRIENDSHIPS = loadFriendships();
+        if (!serverAuthenticated) CONTACTS_DIRECTORY = loadContactsDirectory();
 
         if (data.type === 'FRIEND_REQUEST_SENT' && data.toId === CURRENT_USER.id) {
             NOTIFICATIONS.unshift({
@@ -700,7 +701,11 @@ function renderSavedAccountsOnAuthScreen() {
     });
 }
 
-function loginAsUser(userObj) {
+function loginAsUser(userObj, authenticatedByServer = false) {
+    if (!authenticatedByServer) {
+        serverAuthenticated = false;
+        FRIENDSHIPS = { accepted: [], requests: [] };
+    }
     CURRENT_USER = {
         id: userObj.id,
         name: userObj.name,
@@ -2180,6 +2185,7 @@ function updateFriendBadges() {
 }
 
 function openFriendsModal(defaultTab = 'discover') {
+    if (serverAuthenticated) refreshFriends();
     currentFriendsTab = defaultTab;
     document.querySelectorAll('[data-friends-tab]').forEach((btn) => {
         btn.classList.toggle('active', btn.getAttribute('data-friends-tab') === currentFriendsTab);
@@ -2193,202 +2199,105 @@ function closeFriendsModal() {
     document.getElementById('friendsModalBackdrop')?.classList.add('d-none');
 }
 
-function sendFriendRequest(targetUserId) {
-    if (!targetUserId || targetUserId === CURRENT_USER.id) return;
-    const targetUser = CONTACTS_DIRECTORY.find((c) => c.id === targetUserId);
-    if (!targetUser) return;
+async function friendApi(path, options = {}) {
+    if (!serverAuthenticated) throw new Error('Hãy đăng nhập Google để dùng kết bạn thật.');
+    const response = await fetch(`${getBackendUrl()}/api/friends${path}`, {
+        credentials: 'include', ...options,
+        headers: { 'Content-Type': 'application/json', ...(options.headers || {}) }
+    });
+    if (!response.ok || response.redirected) {
+        if (response.status === 401 || response.status === 403 || response.redirected) {
+            serverAuthenticated = false;
+            throw new Error('Phiên đăng nhập hết hạn. Hãy đăng nhập Google lại.');
+        }
+        if (response.status === 409) throw new Error('Lời mời hoặc quan hệ bạn bè đã tồn tại.');
+        throw new Error('Không thể kết nối kết bạn. Vui lòng thử lại.');
+    }
+    return response;
+}
 
-    if (areUsersFriends(CURRENT_USER.id, targetUserId)) {
-        showToast(`Bạn và ${targetUser.name} đã là bạn bè!`, 'fa-user-check');
+function friendError(error) { showToast(error.message, 'fa-triangle-exclamation'); }
+
+async function refreshFriends() {
+    if (!serverAuthenticated) return;
+    try {
+        const data = await (await friendApi('')).json();
+        FRIENDSHIPS = { accepted: data.accepted, requests: data.requests };
+        const known = new Map(CONTACTS_DIRECTORY.map(c => [c.id, c]));
+        for (const c of data.contacts) known.set(c.id, { ...c, avatar: c.avatar || '', online: false });
+        CONTACTS_DIRECTORY = [...known.values()];
+        updateFriendBadges();
+        renderFriendsModalList();
+    } catch (error) { console.warn('Friend refresh failed:', error.message); }
+}
+
+async function sendFriendRequest(targetUserId) {
+    try {
+        await friendApi('/requests', { method: 'POST', body: JSON.stringify({ userId: targetUserId }) });
+        await refreshFriends();
+        showToast('Đã gửi lời mời kết bạn.', 'fa-user-plus');
+    } catch (error) { friendError(error); }
+}
+
+async function acceptFriendRequest(requestId) {
+    try {
+        await friendApi(`/requests/${encodeURIComponent(requestId)}/accept`, { method: 'POST' });
+        await refreshFriends();
+        showToast('Đã chấp nhận lời mời kết bạn.', 'fa-user-check');
+    } catch (error) { friendError(error); }
+}
+
+async function cancelOrRejectFriendRequest(requestId) {
+    try {
+        await friendApi(`/requests/${encodeURIComponent(requestId)}`, { method: 'DELETE' });
+        await refreshFriends();
+        showToast('Đã hủy lời mời kết bạn.', 'fa-user-xmark');
+    } catch (error) { friendError(error); }
+}
+
+async function removeFriend(friendUserId) {
+    try {
+        await friendApi(`/${encodeURIComponent(friendUserId)}`, { method: 'DELETE' });
+        await refreshFriends();
+        showToast('Đã hủy kết bạn.', 'fa-user-minus');
+    } catch (error) { friendError(error); }
+}
+
+async function handleQuickAddFriendByInput(event) {
+    event.preventDefault();
+    const input = document.getElementById('friendSearchOrEmailInput');
+    const email = (input?.value || '').trim();
+    if (!email.includes('@')) {
+        showToast('Nhập địa chỉ email chính xác của người muốn kết bạn.', 'fa-circle-exclamation');
         return;
     }
-
-    const existingReq = getPendingRequestBetween(CURRENT_USER.id, targetUserId);
-    if (existingReq) {
-        if (existingReq.fromId === targetUserId) {
-            acceptFriendRequest(existingReq.id);
+    try {
+        const results = await (await friendApi(`/search?email=${encodeURIComponent(email)}`)).json();
+        if (!results.length) {
+            showToast('Không tìm thấy tài khoản. Người đó cần đăng nhập Google trước.', 'fa-circle-exclamation');
             return;
         }
-        showToast(`Đã gửi lời mời kết bạn cho ${targetUser.name} trước đó.`, 'fa-paper-plane');
-        return;
-    }
-
-    const newReq = {
-        id: 'freq-' + Date.now(),
-        fromId: CURRENT_USER.id,
-        toId: targetUserId,
-        createdAt: new Date().toISOString()
-    };
-
-    FRIENDSHIPS.requests.unshift(newReq);
-    saveAndSyncFriendships('FRIEND_REQUEST_SENT', {
-        fromId: CURRENT_USER.id,
-        fromName: CURRENT_USER.name,
-        toId: targetUserId
-    });
-
-    updateFriendBadges();
-    renderFriendsModalList();
-    showToast(`Đã gửi lời mời kết bạn tới ${targetUser.name}!`, 'fa-user-plus');
-}
-
-function acceptFriendRequest(requestId) {
-    const reqIdx = FRIENDSHIPS.requests.findIndex((r) => r.id === requestId);
-    if (reqIdx === -1) return;
-
-    const req = FRIENDSHIPS.requests[reqIdx];
-    FRIENDSHIPS.requests.splice(reqIdx, 1);
-
-    if (!areUsersFriends(req.fromId, req.toId)) {
-        FRIENDSHIPS.accepted.push([req.fromId, req.toId]);
-    }
-
-    const partnerId = req.fromId === CURRENT_USER.id ? req.toId : req.fromId;
-    const partner = CONTACTS_DIRECTORY.find((c) => c.id === partnerId);
-
-    // Tạo hoặc mở ngay cuộc trò chuyện 1-1 giữa 2 người vừa kết bạn
-    let conv = CONVERSATIONS.find(
-        (c) =>
-            c.type === 'DIRECT' &&
-            ((c.participants &&
-                c.participants.includes(partnerId) &&
-                c.participants.includes(CURRENT_USER.id)) ||
-                c.contactId === partnerId)
-    );
-
-    if (!conv && partner) {
-        conv = {
-            id: 'conv-' + [CURRENT_USER.id, partner.id].sort().join('-'),
-            contactId: partner.id,
-            participants: [CURRENT_USER.id, partner.id],
-            name: partner.name,
-            type: 'DIRECT',
-            roomId: null,
-            online: partner.online,
-            statusText: 'Đang hoạt động',
-            unreadCount: 0,
-            pinned: false,
-            muted: false,
-            archived: false,
-            blocked: false,
-            themeColor: '#1d72b8',
-            quickEmoji: '👍',
-            avatarText: getInitials(partner.name, partner.initials),
-            sharedFiles: [],
-            avatar: partner.avatar,
-            messages: [
-                {
-                    id: 'msg-friend-' + Date.now(),
-                    isSystemNotice: true,
-                    senderId: CURRENT_USER.id,
-                    senderName: CURRENT_USER.name,
-                    content: `Hai bạn đã kết bạn thành công trên ChatSpace! Hãy bắt đầu trò chuyện nhé.`,
-                    timestamp: new Date().toISOString()
-                }
-            ]
-        };
-        CONVERSATIONS.unshift(conv);
-        persistAndSyncConversations('DIRECT_CREATED');
-    }
-
-    saveAndSyncFriendships('FRIEND_REQUEST_ACCEPTED', {
-        fromId: req.fromId,
-        toId: req.toId,
-        accepterName: CURRENT_USER.name,
-        conversationId: conv?.id || null
-    });
-
-    updateFriendBadges();
-    renderFriendsModalList();
-    renderConversationList();
-    if (conv) {
-        selectConversation(conv.id);
-    }
-    showToast(
-        `Đã kết bạn với ${partner ? partner.name : 'thành viên'} thành công!`,
-        'fa-user-check'
-    );
-}
-
-function cancelOrRejectFriendRequest(requestId) {
-    const idx = FRIENDSHIPS.requests.findIndex((r) => r.id === requestId);
-    if (idx === -1) return;
-
-    FRIENDSHIPS.requests.splice(idx, 1);
-    saveAndSyncFriendships('FRIEND_REQUEST_REMOVED');
-    updateFriendBadges();
-    renderFriendsModalList();
-    showToast('Đã hủy lời mời kết bạn', 'fa-user-xmark');
-}
-
-function removeFriend(friendUserId) {
-    const friendUser = CONTACTS_DIRECTORY.find((c) => c.id === friendUserId);
-    FRIENDSHIPS.accepted = FRIENDSHIPS.accepted.filter(
-        (pair) =>
-            !(
-                (pair[0] === CURRENT_USER.id && pair[1] === friendUserId) ||
-                (pair[0] === friendUserId && pair[1] === CURRENT_USER.id)
-            )
-    );
-    saveAndSyncFriendships('FRIEND_REMOVED');
-    updateFriendBadges();
-    renderFriendsModalList();
-    showToast(
-        `Đã hủy kết bạn với ${friendUser ? friendUser.name : 'người dùng'}`,
-        'fa-user-minus'
-    );
-}
-
-function handleQuickAddFriendByInput(event) {
-    event.preventDefault();
-    const inputEl = document.getElementById('friendSearchOrEmailInput');
-    const rawVal = (inputEl?.value || '').trim();
-    if (!rawVal) {
-        showToast('Vui lòng nhập Tên hoặc Email tài khoản cần kết bạn!', 'fa-circle-exclamation');
-        inputEl?.focus();
-        return;
-    }
-
-    // Kiểm tra xem tài khoản đã có trong danh bạ chung chưa
-    let targetAccount = CONTACTS_DIRECTORY.find(
-        (c) =>
-            c.id !== CURRENT_USER.id &&
-            (c.email.toLowerCase() === rawVal.toLowerCase() ||
-                c.name.toLowerCase() === rawVal.toLowerCase())
-    );
-
-    // Nếu chưa có, tạo tài khoản mới vào danh bạ để kết bạn ngay
-    if (!targetAccount) {
-        const isEmail = rawVal.includes('@');
-        const displayName = isEmail ? rawVal.split('@')[0] : rawVal;
-        const emailAddr = isEmail
-            ? rawVal
-            : rawVal.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '') + '@chatspace.vn';
-
-        targetAccount = {
-            id: 'user-' + Date.now(),
-            name: displayName,
-            shortName: displayName.split(/\s+/).slice(-2).join(' '),
-            initials: getInitials(displayName),
-            email: emailAddr,
-            online: true,
-            avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=1d72b8&color=fff&bold=true`
-        };
-        CONTACTS_DIRECTORY.unshift(targetAccount);
-        saveContactsDirectory();
-    }
-
-    inputEl.value = '';
-    friendSearchFilter = '';
-    sendFriendRequest(targetAccount.id);
+        const contact = { ...results[0], avatar: results[0].avatar || '', online: false };
+        CONTACTS_DIRECTORY = CONTACTS_DIRECTORY.filter(c => c.id !== contact.id);
+        CONTACTS_DIRECTORY.push(contact);
+        input.value = '';
+        friendSearchFilter = '';
+        await sendFriendRequest(contact.id);
+    } catch (error) { friendError(error); }
 }
 
 function renderFriendsModalList() {
     const container = document.getElementById('friendsModalListContainer');
     if (!container) return;
 
+    if (!serverAuthenticated) {
+        container.textContent = 'Hãy đăng nhập Google để sử dụng tính năng kết bạn.';
+        return;
+    }
     const query = friendSearchFilter.toLowerCase();
+    const related = new Set([...FRIENDSHIPS.accepted.flat(), ...FRIENDSHIPS.requests.flatMap(r => [r.fromId, r.toId])]);
     const otherAccounts = CONTACTS_DIRECTORY.filter((c) => {
+        if (!related.has(c.id)) return false;
         if (c.id === CURRENT_USER.id) return false;
         if (!query) return true;
         return c.name.toLowerCase().includes(query) || c.email.toLowerCase().includes(query);
@@ -2489,7 +2398,7 @@ function renderFriendsModalList() {
         if (otherAccounts.length === 0) {
             container.innerHTML = `
                 <div class="text-center text-muted py-4 small">
-                    Không tìm thấy tài khoản. Nhấn nút <strong>"+ Kết bạn"</strong> ở trên để gửi lời mời trực tiếp!
+                    Nhập chính xác email Google của người muốn kết bạn ở ô phía trên.
                 </div>
             `;
             return;
@@ -2591,7 +2500,10 @@ async function checkBackendAuth() {
         const res = await fetch(`${getBackendUrl()}/api/me`, { credentials: 'include' });
         if (res.ok) {
             const data = await res.json();
-            if (data && data.isAuthenticated && data.email) {
+            if (data && data.isAuthenticated && data.email && data.id) {
+                serverAuthenticated = true;
+                CONTACTS_DIRECTORY = [];
+                FRIENDSHIPS = { accepted: [], requests: [] };
                 const userObj = {
                     id: data.id,
                     name: data.name || data.email,
@@ -2601,8 +2513,10 @@ async function checkBackendAuth() {
                     avatar: data.picture || `https://ui-avatars.com/api/?name=${encodeURIComponent(data.name || 'U')}&background=0095f6&color=fff&bold=true`
                 };
                 if (CURRENT_USER.id !== userObj.id || CURRENT_USER.email !== userObj.email || CURRENT_USER.name !== userObj.name) {
-                    loginAsUser(userObj);
+                    loginAsUser(userObj, true);
                 }
+                await refreshFriends();
+                if (!friendRefreshTimer) friendRefreshTimer = setInterval(refreshFriends, 15000);
             }
         }
     } catch (err) {
