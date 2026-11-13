@@ -581,7 +581,7 @@ function handleIncomingSocketMessage(payload) {
         if (payload.sender !== CURRENT_USER.id && payload.recipient !== CURRENT_USER.id) return;
         const partnerId = payload.sender === CURRENT_USER.id ? payload.recipient : payload.sender;
         const contact = CONTACTS_DIRECTORY.find(c => c.id === partnerId) || {
-            id: partnerId, name: partnerId, avatar: ''
+            id: partnerId, name: 'Người dùng', avatar: ''
         };
         let direct = CONVERSATIONS.find(c => c.type === 'DIRECT' &&
             c.participants?.includes(CURRENT_USER.id) && c.participants.includes(partnerId));
@@ -600,7 +600,7 @@ function handleIncomingSocketMessage(payload) {
         const sender = CONTACTS_DIRECTORY.find(c => c.id === payload.sender);
         const message = {
             id: payload.id, senderId: payload.sender,
-            senderName: sender?.name || payload.sender,
+            senderName: sender?.name || (payload.sender === CURRENT_USER.id ? CURRENT_USER.name : 'Người dùng'),
             senderAvatar: sender?.avatar || '', content: payload.content,
             timestamp: payload.sentAt || new Date().toISOString()
         };
@@ -1327,8 +1327,10 @@ function getDisplayConversationName(conv) {
     if (conv.participants && Array.isArray(conv.participants)) {
         const partnerId = conv.participants.find((id) => id !== CURRENT_USER.id);
         const partner = CONTACTS_DIRECTORY.find((c) => c.id === partnerId);
-        if (partner) return partner.name;
+        if (partner?.name) return partner.name;
+        if (conv.name === partnerId) return 'Người dùng';
     }
+    if (conv.name === conv.contactId || /^\d{15,}$/.test(conv.name || '')) return 'Người dùng';
     return conv.name;
 }
 
@@ -1987,34 +1989,6 @@ function showTypingIndicator(senderName) {
     }, 1800);
 }
 
-function startCallSession(type = 'AUDIO') {
-    const conv = getConversationById(activeConversationId);
-    if (!conv) return;
-
-    if (conv.blocked) {
-        showToast('Không thể thực hiện cuộc gọi vì bạn đã chặn tài khoản này.', 'fa-ban');
-        return;
-    }
-
-    const callModal = document.getElementById('callModalBackdrop');
-    const avatarWrap = document.getElementById('callAvatarWrap');
-    const partnerNameEl = document.getElementById('callPartnerName');
-    const statusLabel = document.getElementById('callStatusLabel');
-    const displayName = getDisplayConversationName(conv);
-    const displayAvatar = getDisplayConversationAvatar(conv);
-
-    avatarWrap.innerHTML =
-        conv.type === 'GROUP'
-            ? `<div class="conv-avatar-group mx-auto" style="width:80px;height:80px;font-size:1.5rem;">${escapeHtml(conv.avatarText || 'GR')}</div>`
-            : `<img src="${displayAvatar}" alt="${escapeHtml(displayName)}" class="conv-avatar" style="width:80px;height:80px;">`;
-
-    partnerNameEl.textContent = displayName;
-    statusLabel.textContent =
-        type === 'VIDEO' ? 'Đang gọi video trực tuyến...' : 'Đang đổ chuông gọi thoại...';
-
-    callModal.classList.remove('d-none');
-}
-
 // --------------------------------------------------------------------------
 // 9. TIỆN ÍCH HỖ TRỢ (TOAST, SOUND, HELPERS)
 // --------------------------------------------------------------------------
@@ -2224,10 +2198,22 @@ async function refreshFriends() {
         const data = await (await friendApi('')).json();
         FRIENDSHIPS = { accepted: data.accepted, requests: data.requests };
         const known = new Map(CONTACTS_DIRECTORY.map(c => [c.id, c]));
-        for (const c of data.contacts) known.set(c.id, { ...c, avatar: c.avatar || '', online: false });
+        let contactsChanged = false;
+        for (const c of data.contacts) {
+            const previous = known.get(c.id);
+            if (!previous || previous.name !== c.name || (previous.avatar || '') !== (c.avatar || '')) {
+                contactsChanged = true;
+            }
+            known.set(c.id, { ...c, avatar: c.avatar || '', online: false });
+        }
         CONTACTS_DIRECTORY = [...known.values()];
         updateFriendBadges();
         renderFriendsModalList();
+        if (contactsChanged) {
+            renderConversationList();
+            const active = getConversationById(activeConversationId);
+            if (active) updateActiveChatHeaderAndDrawer(active);
+        }
     } catch (error) { console.warn('Friend refresh failed:', error.message); }
 }
 
@@ -3000,19 +2986,6 @@ document.addEventListener('DOMContentLoaded', () => {
     btnToggleInfoDrawer.addEventListener('click', () => {
         chatInfoDrawer.classList.toggle('d-none');
         btnToggleInfoDrawer.classList.toggle('active');
-    });
-
-    // Gọi thoại & Gọi video
-    document.getElementById('btnAudioCall').addEventListener('click', () => startCallSession('AUDIO'));
-    document.getElementById('btnVideoCall').addEventListener('click', () => startCallSession('VIDEO'));
-    document.getElementById('btnEndCall').addEventListener('click', () => {
-        document.getElementById('callModalBackdrop').classList.add('d-none');
-        showToast('Đã kết thúc cuộc gọi', 'fa-phone-slash');
-    });
-    document.getElementById('btnToggleCallMic').addEventListener('click', (e) => {
-        const icon = e.currentTarget.querySelector('i');
-        icon.classList.toggle('fa-microphone');
-        icon.classList.toggle('fa-microphone-slash');
     });
 
     // Trung tâm Thông báo
