@@ -718,6 +718,7 @@ function loginAsUser(userObj, authenticatedByServer = false) {
     };
 
     saveTabUser(CURRENT_USER);
+    document.getElementById('authScreen')?.classList.add('d-none');
     CONVERSATIONS = loadConversations();
     activeConversationId = CONVERSATIONS[0]?.id || null;
     connectWebSocket();
@@ -753,7 +754,6 @@ function loginAsUser(userObj, authenticatedByServer = false) {
         selectConversation(null);
     }
 
-    document.getElementById('authScreen')?.classList.add('d-none');
     document.getElementById('settingsModalBackdrop')?.classList.add('d-none');
     showToast(`Xin chào, ${CURRENT_USER.name}!`, 'fa-circle-check');
 }
