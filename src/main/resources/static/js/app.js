@@ -96,10 +96,25 @@ function getBackendUrl() {
     if (window.BACKEND_API_URL) return window.BACKEND_API_URL.replace(/\/+$/, '');
     const stored = localStorage.getItem('BACKEND_API_URL');
     if (stored) return stored.replace(/\/+$/, '');
-    if (['localhost', '127.0.0.1'].includes(window.location.hostname)) {
+
+    const isFileProtocol = window.location.protocol === 'file:' || window.location.origin === 'null';
+    if (isFileProtocol) {
+        return (window.BACKEND_URL_DEFAULT || 'https://chatapprealtime-production-ea7b4569.up.railway.app').replace(/\/+$/, '');
+    }
+
+    // Khi chạy trên localhost:8080 (cùng port với Spring Boot), dùng relative path
+    if (['localhost', '127.0.0.1'].includes(window.location.hostname) && window.location.port === '8080') {
         return '';
     }
+    // Khi chạy qua Live Server (port 3000, 5500,...) hoặc deploy ngoài:
+    // Tự động kết nối tới Backend Railway
     return (window.BACKEND_URL_DEFAULT || 'https://chatapprealtime-production-ea7b4569.up.railway.app').replace(/\/+$/, '');
+}
+
+function buildBackendUrl(pathname) {
+    const base = getBackendUrl();
+    if (!base) return new URL(pathname, window.location.origin).toString();
+    return new URL(pathname, `${base}/`).toString();
 }
 
 // Kênh đồng bộ thời gian thực giữa các Tab trình duyệt (Multi-Tab Realtime Bus)
@@ -260,7 +275,7 @@ function setAuthTab(tabName) {
     if (viewForgot) viewForgot.classList.toggle('d-none', tabName !== 'forgot');
 
     if (tabName === 'register') {
-        setTimeout(() => document.getElementById('regNameInput')?.focus(), 50);
+        setTimeout(() => document.getElementById('regPhoneInput')?.focus(), 50);
     } else if (tabName === 'login') {
         setTimeout(() => document.getElementById('loginEmailInput')?.focus(), 50);
     } else if (tabName === 'forgot') {
@@ -268,6 +283,35 @@ function setAuthTab(tabName) {
     }
 }
 window.setAuthTab = setAuthTab;
+
+function openAuthScreen(tab = 'login', isLoggedOut = false) {
+    setAuthAlert('');
+    setAuthTab(tab);
+    const authScreen = document.getElementById('authScreen');
+    const closeBtn = document.getElementById('btnCloseAuthScreen');
+    if (closeBtn) {
+        closeBtn.classList.toggle('d-none', !CURRENT_USER.id || isLoggedOut);
+    }
+    if (CURRENT_USER.email && !isLoggedOut) {
+        const loginEmail = document.getElementById('loginEmailInput');
+        if (loginEmail) loginEmail.value = CURRENT_USER.email;
+    } else {
+        const loginEmail = document.getElementById('loginEmailInput');
+        if (loginEmail) loginEmail.value = '';
+        const loginPass = document.getElementById('loginPasswordInput');
+        if (loginPass) loginPass.value = '';
+    }
+
+    authScreen?.classList.remove('d-none');
+}
+window.openAuthScreen = openAuthScreen;
+
+function closeAuthScreen() {
+    if (CURRENT_USER.id) {
+        document.getElementById('authScreen')?.classList.add('d-none');
+    }
+}
+window.closeAuthScreen = closeAuthScreen;
 
 function handleSendRegOtp() {
     const emailVal = document.getElementById('regEmailInput')?.value.trim();
@@ -2574,6 +2618,9 @@ async function checkBackendAuth() {
                 };
                 if (CURRENT_USER.id !== userObj.id || CURRENT_USER.email !== userObj.email || CURRENT_USER.name !== userObj.name) {
                     loginAsUser(userObj, true);
+                } else {
+                    document.getElementById('authScreen')?.classList.add('d-none');
+                    document.getElementById('btnCloseAuthScreen')?.classList.remove('d-none');
                 }
                 await refreshFriends();
                 if (!friendRefreshTimer) friendRefreshTimer = setInterval(refreshFriends, 15000);
@@ -2783,17 +2830,17 @@ document.addEventListener('DOMContentLoaded', () => {
     registerForm?.addEventListener('submit', async (e) => {
         e.preventDefault();
         setAuthAlert('');
-        const nameVal = document.getElementById('regNameInput')?.value.trim();
+        const phoneVal = document.getElementById('regPhoneInput')?.value.trim();
         const emailVal = document.getElementById('regEmailInput')?.value.trim();
         const passVal = document.getElementById('regPasswordInput')?.value;
         const confirmPassVal = document.getElementById('regConfirmPasswordInput')?.value;
         const otpVal = document.getElementById('regOtpInput')?.value.trim();
         const submitBtn = document.getElementById('btnRegSubmit');
 
-        if (!nameVal) {
-            setAuthAlert('Vui lòng nhập họ và tên hiển thị!', 'danger');
-            showToast('Vui lòng nhập họ và tên hiển thị!', 'fa-circle-exclamation');
-            document.getElementById('regNameInput')?.focus();
+        if (!phoneVal) {
+            setAuthAlert('Vui lòng nhập số điện thoại!', 'danger');
+            showToast('Vui lòng nhập số điện thoại!', 'fa-circle-exclamation');
+            document.getElementById('regPhoneInput')?.focus();
             return;
         }
 
@@ -2842,7 +2889,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    name: nameVal,
+                    phone: phoneVal,
                     email: emailVal,
                     password: passVal,
                     otp: otpVal
@@ -3207,25 +3254,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Mở màn hình Đăng nhập / Đổi tài khoản
     const authScreen = document.getElementById('authScreen');
-    const openAuthScreen = (tab = 'login', isLoggedOut = false) => {
-        setAuthAlert('');
-        setAuthTab(tab);
-        const closeBtn = document.getElementById('btnCloseAuthScreen');
-        if (closeBtn) {
-            closeBtn.classList.toggle('d-none', !CURRENT_USER.id || isLoggedOut);
-        }
-        if (CURRENT_USER.email && !isLoggedOut) {
-            const loginEmail = document.getElementById('loginEmailInput');
-            if (loginEmail) loginEmail.value = CURRENT_USER.email;
-        } else {
-            const loginEmail = document.getElementById('loginEmailInput');
-            if (loginEmail) loginEmail.value = '';
-            const loginPass = document.getElementById('loginPasswordInput');
-            if (loginPass) loginPass.value = '';
-        }
-
-        authScreen?.classList.remove('d-none');
-    };
     document.getElementById('btnSwitchAccount')?.addEventListener('click', () => openAuthScreen('login', false));
     document.getElementById('btnHeaderSwitchAccount')?.addEventListener('click', () => openAuthScreen('login', false));
     document.getElementById('btnLogoutFromSettings')?.addEventListener('click', () => logoutCurrentUser());
@@ -3239,8 +3267,11 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
     document.getElementById('btnGoogleOAuth')?.addEventListener('click', (event) => {
-        event.preventDefault();
-        window.location.href = `${getBackendUrl()}/oauth2/authorization/google`;
+        try {
+            event.currentTarget.href = buildBackendUrl('/oauth2/authorization/google');
+        } catch (error) {
+            console.warn('Using the default Google login link:', error);
+        }
     });
 
     // Chọn Emoji

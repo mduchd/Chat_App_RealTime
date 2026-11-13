@@ -84,14 +84,14 @@ public class AuthController {
     @PostMapping("/register")
     public ResponseEntity<Map<String, Object>> register(@RequestBody Map<String, String> request) {
         Map<String, Object> response = new HashMap<>();
-        String name = request.get("name");
+        String phone = request.get("phone");
         String email = request.get("email");
         String password = request.get("password");
         String otp = request.get("otp");
 
-        if (name == null || name.isBlank()) {
+        if (phone == null || phone.isBlank()) {
             response.put("success", false);
-            response.put("message", "Vui lòng nhập họ và tên hiển thị!");
+            response.put("message", "Vui lòng nhập số điện thoại!");
             return ResponseEntity.badRequest().body(response);
         }
 
@@ -113,16 +113,26 @@ public class AuthController {
             return ResponseEntity.badRequest().body(response);
         }
 
+        String cleanPhone = phone.trim().replaceAll("\\s+", "");
         String cleanEmail = email.trim().toLowerCase();
+        String displayName = cleanPhone;
+        String emailLocalPart = cleanEmail.contains("@") ? cleanEmail.substring(0, cleanEmail.indexOf('@')) : cleanEmail;
+        if (!emailLocalPart.isBlank()) {
+            displayName = emailLocalPart;
+        }
 
-        // 1. Kiểm tra tài khoản đã tồn tại chưa
+        if (userRepository.existsByPhone(cleanPhone)) {
+            response.put("success", false);
+            response.put("message", "Số điện thoại này đã được đăng ký tài khoản!");
+            return ResponseEntity.badRequest().body(response);
+        }
+
         if (userRepository.existsByEmail(cleanEmail)) {
             response.put("success", false);
             response.put("message", "Gmail này đã được đăng ký tài khoản! Vui lòng chọn Đăng nhập.");
             return ResponseEntity.badRequest().body(response);
         }
 
-        // 2. Xác thực mã OTP
         boolean otpValid = otpService.verifyOtp(cleanEmail, otp, "REGISTER");
         if (!otpValid) {
             response.put("success", false);
@@ -130,13 +140,13 @@ public class AuthController {
             return ResponseEntity.badRequest().body(response);
         }
 
-        // 3. Tạo tài khoản người dùng mới vào CSDL
         try {
             User newUser = new User();
+            newUser.setPhone(cleanPhone);
             newUser.setEmail(cleanEmail);
-            newUser.setDisplayName(name.trim());
+            newUser.setDisplayName(displayName.trim());
             newUser.setPasswordHash(passwordEncoder.encode(password));
-            newUser.setAvatarUrl("https://ui-avatars.com/api/?name=" + URLEncoder.encode(name.trim(), StandardCharsets.UTF_8) + "&background=1d72b8&color=fff&bold=true");
+            newUser.setAvatarUrl("https://ui-avatars.com/api/?name=" + URLEncoder.encode(displayName.trim(), StandardCharsets.UTF_8) + "&background=1d72b8&color=fff&bold=true");
             newUser.setLastLoginAt(LocalDateTime.now());
 
             User savedUser = userRepository.save(newUser);
@@ -145,6 +155,7 @@ public class AuthController {
             userData.put("id", savedUser.getId().toString());
             userData.put("name", savedUser.getDisplayName());
             userData.put("email", savedUser.getEmail());
+            userData.put("phone", savedUser.getPhone());
             userData.put("avatar", savedUser.getAvatarUrl());
 
             response.put("success", true);

@@ -34,12 +34,16 @@ public class EmailService {
             return false;
         }
 
+        if (fromEmail == null || fromEmail.isBlank()) {
+            logger.error("MAIL_USERNAME chưa được cấu hình. Cần set biến môi trường MAIL_USERNAME với tài khoản Gmail chính xác.");
+            return false;
+        }
+
         try {
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
 
-            String sender = (fromEmail != null && !fromEmail.isBlank()) ? fromEmail : "chatapp.service.notify@gmail.com";
-            helper.setFrom(sender, "ChatSpace Realtime");
+            helper.setFrom(fromEmail, "ChatSpace Realtime");
             helper.setTo(toEmail);
             helper.setSubject("ChatSpace — Mã xác thực OTP (" + otpCode + ")");
 
