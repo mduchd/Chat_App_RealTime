@@ -142,70 +142,101 @@ function loadContactsDirectory() {
 }
 
 // --------------------------------------------------------------------------
-// QUẢN LÝ MÃ OTP XÁC THỰC (GMAIL / SĐT) & ĐIỀU HƯỚNG TAB XÁC THỰC
 // --------------------------------------------------------------------------
-const PENDING_AUTH_OTPS = new Map();
+// QUẢN LÝ MÃ OTP XÁC THỰC QUA GMAIL & ĐIỀU HƯỚNG TAB XÁC THỰC
+// --------------------------------------------------------------------------
 const OTP_COOLDOWN_TIMERS = new Map();
 
-function sendAuthOtp(destination, buttonEl, hintEl) {
-    if (!destination) return null;
-    const destKey = destination.trim().toLowerCase();
-    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
-    const expiresAt = Date.now() + 5 * 60 * 1000;
-
-    PENDING_AUTH_OTPS.set(destKey, {
-        code: otpCode,
-        expiresAt: expiresAt
-    });
-
-    showToast(`Mã xác thực OTP của bạn là: ${otpCode} (Hết hạn sau 5 phút)`, 'fa-key', 9000);
-    if (hintEl) {
-        hintEl.innerHTML = `<span class="text-success"><i class="fa-solid fa-circle-check me-1"></i>Đã gửi OTP tới <strong>${escapeHtml(destination)}</strong>. Mã thử nghiệm: <strong class="badge bg-primary text-white">${otpCode}</strong></span>`;
+function setAuthAlert(message, type = 'danger') {
+    const box = document.getElementById('authAlertBox');
+    const text = document.getElementById('authAlertText');
+    if (!box || !text) return;
+    if (!message) {
+        box.classList.add('d-none');
+        return;
     }
-
-    if (buttonEl) {
-        if (OTP_COOLDOWN_TIMERS.has(buttonEl.id)) {
-            clearInterval(OTP_COOLDOWN_TIMERS.get(buttonEl.id));
-        }
-        let countdown = 60;
-        buttonEl.disabled = true;
-        const originalText = buttonEl.textContent;
-        buttonEl.textContent = `Gửi lại (${countdown}s)`;
-
-        const timerId = setInterval(() => {
-            countdown -= 1;
-            if (countdown <= 0) {
-                clearInterval(timerId);
-                OTP_COOLDOWN_TIMERS.delete(buttonEl.id);
-                buttonEl.disabled = false;
-                buttonEl.textContent = originalText;
-            } else {
-                buttonEl.textContent = `Gửi lại (${countdown}s)`;
-            }
-        }, 1000);
-        OTP_COOLDOWN_TIMERS.set(buttonEl.id, timerId);
+    box.className = `auth-alert-banner alert-${type}`;
+    const icon = box.querySelector('.auth-alert-icon');
+    if (icon) {
+        icon.className = type === 'success'
+            ? 'fa-solid fa-circle-check auth-alert-icon me-2'
+            : type === 'info'
+                ? 'fa-solid fa-circle-info auth-alert-icon me-2'
+                : 'fa-solid fa-triangle-exclamation auth-alert-icon me-2';
     }
-
-    return otpCode;
+    text.textContent = message;
+    box.classList.remove('d-none');
 }
 
-function verifyAuthOtp(destination, enteredCode) {
-    if (!destination || !enteredCode) return false;
-    const cleanCode = enteredCode.trim();
-    if (cleanCode === '123456') return true; // Cho phép mã thử nghiệm nhanh
-
-    const destKey = destination.trim().toLowerCase();
-    const record = PENDING_AUTH_OTPS.get(destKey);
-    if (!record) return false;
-    if (Date.now() > record.expiresAt) {
-        PENDING_AUTH_OTPS.delete(destKey);
+/**
+ * Gửi mã OTP xác thực thẳng vào Gmail người dùng thông qua Backend API
+ */
+async function sendAuthOtp(destination, purpose, buttonEl, hintEl) {
+    if (!destination || !destination.includes('@')) {
+        setAuthAlert('Vui lòng nhập địa chỉ Gmail hợp lệ trước khi gửi mã OTP!', 'danger');
         return false;
     }
-    if (record.code === cleanCode) {
-        PENDING_AUTH_OTPS.delete(destKey);
-        return true;
+    const cleanEmail = destination.trim().toLowerCase();
+    setAuthAlert('Đang gửi mã xác thực OTP tới Gmail ' + cleanEmail + '...', 'info');
+
+    const originalHtml = buttonEl ? buttonEl.innerHTML : '';
+    if (buttonEl) {
+        buttonEl.disabled = true;
+        buttonEl.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span> Đang gửi...';
     }
-    return false;
+
+    try {
+        const response = await fetch(`${getBackendUrl()}/api/auth/send-otp`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: cleanEmail, purpose: purpose || 'REGISTER' })
+        });
+        const data = await response.json();
+
+        if (response.ok && data.success) {
+            setAuthAlert(data.message, 'success');
+            showToast('Đã gửi mã OTP đến ' + cleanEmail + '! Vui lòng kiểm tra Gmail.', 'fa-paper-plane');
+            if (hintEl) {
+                hintEl.innerHTML = `<span class="text-success"><i class="fa-solid fa-circle-check me-1"></i>Đã gửi mã OTP thẳng vào Gmail <strong>${escapeHtml(cleanEmail)}</strong>. Vui lòng kiểm tra Hộp thư đến (hoặc Thư rác/Spam).</span>`;
+            }
+
+            if (buttonEl) {
+                let countdown = 60;
+                buttonEl.disabled = true;
+                buttonEl.innerHTML = `<i class="fa-regular fa-clock me-1"></i> Gửi lại (${countdown}s)`;
+                const timerId = setInterval(() => {
+                    countdown -= 1;
+                    if (countdown <= 0) {
+                        clearInterval(timerId);
+                        buttonEl.disabled = false;
+                        buttonEl.innerHTML = '<i class="fa-regular fa-paper-plane me-1"></i> Gửi mã OTP';
+                    } else {
+                        buttonEl.innerHTML = `<i class="fa-regular fa-clock me-1"></i> Gửi lại (${countdown}s)`;
+                    }
+                }, 1000);
+            }
+            return true;
+        } else {
+            const errorMsg = data.message || 'Không thể gửi mã OTP. Vui lòng kiểm tra lại!';
+            setAuthAlert(errorMsg, 'danger');
+            showToast(errorMsg, 'fa-triangle-exclamation');
+            if (buttonEl) {
+                buttonEl.disabled = false;
+                buttonEl.innerHTML = originalHtml || '<i class="fa-regular fa-paper-plane me-1"></i> Gửi mã OTP';
+            }
+            return false;
+        }
+    } catch (err) {
+        console.error('Lỗi khi gửi mã OTP qua Gmail:', err);
+        const errText = 'Không thể kết nối đến máy chủ để gửi OTP. Vui lòng kiểm tra kết nối mạng!';
+        setAuthAlert(errText, 'danger');
+        showToast(errText, 'fa-triangle-exclamation');
+        if (buttonEl) {
+            buttonEl.disabled = false;
+            buttonEl.innerHTML = originalHtml || '<i class="fa-regular fa-paper-plane me-1"></i> Gửi mã OTP';
+        }
+        return false;
+    }
 }
 
 let currentAuthTab = 'login';
@@ -215,6 +246,7 @@ let currentForgotMethod = 'email';
 
 function setAuthTab(tabName) {
     currentAuthTab = tabName;
+    setAuthAlert('');
     document.querySelectorAll('[data-auth-tab]').forEach((btn) => {
         btn.classList.toggle('active', btn.getAttribute('data-auth-tab') === tabName);
     });
@@ -226,7 +258,50 @@ function setAuthTab(tabName) {
     if (viewLogin) viewLogin.classList.toggle('d-none', tabName !== 'login');
     if (viewReg) viewReg.classList.toggle('d-none', tabName !== 'register');
     if (viewForgot) viewForgot.classList.toggle('d-none', tabName !== 'forgot');
+
+    if (tabName === 'register') {
+        setTimeout(() => document.getElementById('regNameInput')?.focus(), 50);
+    } else if (tabName === 'login') {
+        setTimeout(() => document.getElementById('loginEmailInput')?.focus(), 50);
+    } else if (tabName === 'forgot') {
+        setTimeout(() => document.getElementById('forgotEmailInput')?.focus(), 50);
+    }
 }
+window.setAuthTab = setAuthTab;
+
+function handleSendRegOtp() {
+    const emailVal = document.getElementById('regEmailInput')?.value.trim();
+    if (!emailVal || !emailVal.includes('@')) {
+        setAuthAlert('Vui lòng nhập địa chỉ Gmail hợp lệ trước khi gửi mã OTP!', 'danger');
+        showToast('Vui lòng nhập địa chỉ Gmail hợp lệ!', 'fa-circle-exclamation');
+        document.getElementById('regEmailInput')?.focus();
+        return;
+    }
+    sendAuthOtp(
+        emailVal,
+        'REGISTER',
+        document.getElementById('btnSendRegOtp'),
+        document.getElementById('regOtpHint')
+    );
+}
+window.handleSendRegOtp = handleSendRegOtp;
+
+function handleSendForgotOtp() {
+    const emailVal = document.getElementById('forgotEmailInput')?.value.trim();
+    if (!emailVal || !emailVal.includes('@')) {
+        setAuthAlert('Vui lòng nhập địa chỉ Gmail đã đăng ký trước khi gửi mã OTP!', 'danger');
+        showToast('Vui lòng nhập địa chỉ Gmail đã đăng ký!', 'fa-circle-exclamation');
+        document.getElementById('forgotEmailInput')?.focus();
+        return;
+    }
+    sendAuthOtp(
+        emailVal,
+        'FORGOT_PASSWORD',
+        document.getElementById('btnSendForgotOtp'),
+        document.getElementById('forgotOtpHint')
+    );
+}
+window.handleSendForgotOtp = handleSendForgotOtp;
 
 function setLoginMethod(method) {
     currentLoginMethod = method;
@@ -678,27 +753,25 @@ function updateCurrentUserProfileUI() {
 }
 
 function renderSavedAccountsOnAuthScreen() {
+    // Không hiển thị tài khoản mẫu để tránh tự đăng nhập ngoài ý muốn
     const container = document.getElementById('savedAccountsList');
-    if (!container) return;
+    if (container) container.innerHTML = '';
+}
 
-    container.innerHTML = CONTACTS_DIRECTORY.map(
-        (acc) => `
-        <button type="button" class="saved-account-chip" data-switch-user-id="${acc.id}">
-            <img src="${acc.avatar}" alt="${escapeHtml(acc.name)}">
-            <span>${escapeHtml(acc.name)}</span>
-        </button>
-    `
-    ).join('');
-
-    container.querySelectorAll('[data-switch-user-id]').forEach((btn) => {
-        btn.addEventListener('click', () => {
-            const userId = btn.getAttribute('data-switch-user-id');
-            const found = CONTACTS_DIRECTORY.find((u) => u.id === userId);
-            if (found) {
-                loginAsUser(found);
-            }
-        });
-    });
+function logoutCurrentUser() {
+    sessionStorage.removeItem(STORAGE_KEYS.TAB_USER);
+    CURRENT_USER = { id: '', name: '', email: '' };
+    serverAuthenticated = false;
+    FRIENDSHIPS = { accepted: [], requests: [] };
+    if (stompClient?.connected) {
+        try { stompClient.disconnect(); } catch (_) {}
+    }
+    isWsConnected = false;
+    updateWsStatusUI('disconnected', 'Đã đăng xuất');
+    updateCurrentUserProfileUI();
+    document.getElementById('settingsModalBackdrop')?.classList.add('d-none');
+    openAuthScreen('login', true);
+    showToast('Đã đăng xuất khỏi tài khoản!', 'fa-right-from-bracket');
 }
 
 function loginAsUser(userObj, authenticatedByServer = false) {
@@ -707,18 +780,19 @@ function loginAsUser(userObj, authenticatedByServer = false) {
         FRIENDSHIPS = { accepted: [], requests: [] };
     }
     CURRENT_USER = {
-        id: userObj.id,
-        name: userObj.name,
-        shortName: userObj.shortName || userObj.name.split(/\s+/).slice(-2).join(' '),
+        id: String(userObj.id),
+        name: userObj.name || userObj.displayName || 'Người dùng',
+        shortName: userObj.shortName || (userObj.name ? userObj.name.split(/\s+/).slice(-2).join(' ') : 'Bạn'),
         email: userObj.email || '',
         phone: userObj.phone || '',
-        password: userObj.password || '123456',
+        password: userObj.password || '',
         online: true,
-        avatar: userObj.avatar
+        avatar: userObj.avatar || userObj.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(userObj.name || 'User')}&background=1d72b8&color=fff&bold=true`
     };
 
     saveTabUser(CURRENT_USER);
     document.getElementById('authScreen')?.classList.add('d-none');
+    document.getElementById('btnCloseAuthScreen')?.classList.remove('d-none');
     CONVERSATIONS = loadConversations();
     activeConversationId = CONVERSATIONS[0]?.id || null;
     connectWebSocket();
@@ -2524,8 +2598,13 @@ document.addEventListener('DOMContentLoaded', () => {
     renderBlockedUsersInSettings();
     selectConversation(activeConversationId);
 
-    if (CURRENT_USER.id) connectWebSocket();
-    else document.getElementById('authScreen')?.classList.remove('d-none');
+    if (CURRENT_USER.id && CURRENT_USER.email) {
+        connectWebSocket();
+        document.getElementById('authScreen')?.classList.add('d-none');
+        document.getElementById('btnCloseAuthScreen')?.classList.remove('d-none');
+    } else {
+        openAuthScreen('login', true);
+    }
 
     checkBackendAuth();
 
@@ -2574,6 +2653,10 @@ document.addEventListener('DOMContentLoaded', () => {
         e.preventDefault();
         setAuthTab('forgot');
     });
+    document.getElementById('linkGoToForgot')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        setAuthTab('forgot');
+    });
     document.getElementById('linkGoToRegister')?.addEventListener('click', (e) => {
         e.preventDefault();
         setAuthTab('register');
@@ -2606,205 +2689,267 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // 4. Gửi mã OTP xác thực
+    // 4. Gửi mã OTP xác thực thẳng vào Gmail
     document.getElementById('btnSendRegOtp')?.addEventListener('click', () => {
-        const isEmail = currentRegMethod === 'email';
-        const dest = isEmail
-            ? document.getElementById('regEmailInput')?.value.trim()
-            : document.getElementById('regPhoneInput')?.value.trim();
-        if (!dest) {
-            showToast(`Vui lòng nhập ${isEmail ? 'địa chỉ Gmail' : 'số điện thoại'} trước khi nhận mã OTP!`, 'fa-circle-exclamation');
+        const emailVal = document.getElementById('regEmailInput')?.value.trim();
+        if (!emailVal || !emailVal.includes('@')) {
+            setAuthAlert('Vui lòng nhập địa chỉ Gmail hợp lệ trước khi nhận mã OTP!', 'danger');
+            showToast('Vui lòng nhập địa chỉ Gmail hợp lệ!', 'fa-circle-exclamation');
+            document.getElementById('regEmailInput')?.focus();
             return;
         }
         sendAuthOtp(
-            dest,
+            emailVal,
+            'REGISTER',
             document.getElementById('btnSendRegOtp'),
             document.getElementById('regOtpHint')
         );
     });
 
     document.getElementById('btnSendForgotOtp')?.addEventListener('click', () => {
-        const isEmail = currentForgotMethod === 'email';
-        const dest = isEmail
-            ? document.getElementById('forgotEmailInput')?.value.trim()
-            : document.getElementById('forgotPhoneInput')?.value.trim();
-        if (!dest) {
-            showToast(`Vui lòng nhập ${isEmail ? 'Gmail' : 'Số điện thoại'} trước khi nhận mã OTP!`, 'fa-circle-exclamation');
+        const emailVal = document.getElementById('forgotEmailInput')?.value.trim();
+        if (!emailVal || !emailVal.includes('@')) {
+            setAuthAlert('Vui lòng nhập địa chỉ Gmail đã đăng ký trước khi nhận mã OTP!', 'danger');
+            showToast('Vui lòng nhập địa chỉ Gmail đã đăng ký!', 'fa-circle-exclamation');
+            document.getElementById('forgotEmailInput')?.focus();
             return;
         }
         sendAuthOtp(
-            dest,
+            emailVal,
+            'FORGOT_PASSWORD',
             document.getElementById('btnSendForgotOtp'),
             document.getElementById('forgotOtpHint')
         );
     });
 
-    // 5. Submit Form Đăng nhập
+    // 5. Submit Form Đăng nhập (YÊU CẦU: Phải đăng ký mới đăng nhập được)
     const loginForm = document.getElementById('loginForm');
-    loginForm?.addEventListener('submit', (e) => {
+    loginForm?.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const isEmail = currentLoginMethod === 'email';
+        setAuthAlert('');
         const emailVal = document.getElementById('loginEmailInput')?.value.trim();
-        const phoneVal = document.getElementById('loginPhoneInput')?.value.trim();
         const passVal = document.getElementById('loginPasswordInput')?.value;
+        const submitBtn = document.getElementById('btnLoginSubmit');
 
-        if (isEmail && !emailVal) {
-            showToast('Vui lòng nhập địa chỉ Gmail / Email!', 'fa-circle-exclamation');
-            return;
-        }
-        if (!isEmail && !phoneVal) {
-            showToast('Vui lòng nhập số điện thoại!', 'fa-circle-exclamation');
+        if (!emailVal) {
+            setAuthAlert('Vui lòng nhập địa chỉ Gmail!', 'danger');
+            showToast('Vui lòng nhập địa chỉ Gmail!', 'fa-circle-exclamation');
             return;
         }
         if (!passVal) {
+            setAuthAlert('Vui lòng nhập mật khẩu!', 'danger');
             showToast('Vui lòng nhập mật khẩu!', 'fa-circle-exclamation');
             return;
         }
 
-        let user = null;
-        if (isEmail) {
-            user = CONTACTS_DIRECTORY.find((u) => u.email && u.email.toLowerCase() === emailVal.toLowerCase());
-        } else {
-            const cleanPhone = phoneVal.replace(/[^0-9]/g, '');
-            user = CONTACTS_DIRECTORY.find((u) => u.phone && u.phone.replace(/[^0-9]/g, '') === cleanPhone);
+        const originalBtnHtml = submitBtn ? submitBtn.innerHTML : '';
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span> Đang đăng nhập...';
         }
 
-        if (!user) {
-            showToast(`Không tìm thấy tài khoản với ${isEmail ? 'Gmail' : 'SĐT'} này. Bạn có thể bấm "Đăng ký"!`, 'fa-triangle-exclamation');
-            return;
-        }
+        try {
+            const response = await fetch(`${getBackendUrl()}/api/auth/login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: emailVal, password: passVal })
+            });
+            const data = await response.json();
 
-        if (user.password && user.password !== passVal) {
-            showToast('Mật khẩu không chính xác! Vui lòng thử lại hoặc chọn Quên mật khẩu.', 'fa-circle-xmark');
-            return;
+            if (response.ok && data.success && data.user) {
+                setAuthAlert('Đăng nhập thành công! Đang vào hệ thống...', 'success');
+                showToast(data.message || `Đăng nhập thành công! Chào mừng ${data.user.name}`, 'fa-circle-check');
+                loginAsUser(data.user, true);
+            } else {
+                const errorMsg = data.message || 'Đăng nhập không thành công. Vui lòng kiểm tra lại!';
+                setAuthAlert(errorMsg, 'danger');
+                showToast(errorMsg, 'fa-circle-xmark');
+            }
+        } catch (err) {
+            console.error('Lỗi khi gọi API login:', err);
+            const errText = 'Không thể kết nối đến máy chủ xác thực. Vui lòng thử lại sau!';
+            setAuthAlert(errText, 'danger');
+            showToast(errText, 'fa-triangle-exclamation');
+        } finally {
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = originalBtnHtml;
+            }
         }
-
-        loginAsUser(user);
-        showToast(`Đăng nhập thành công! Chào mừng ${user.name}`, 'fa-circle-check');
     });
 
-    // 6. Submit Form Đăng ký
+    // 6. Submit Form Đăng ký (Xác thực bằng OTP gửi vào Gmail)
     const registerForm = document.getElementById('registerForm');
-    registerForm?.addEventListener('submit', (e) => {
+    registerForm?.addEventListener('submit', async (e) => {
         e.preventDefault();
+        setAuthAlert('');
         const nameVal = document.getElementById('regNameInput')?.value.trim();
-        const isEmail = currentRegMethod === 'email';
         const emailVal = document.getElementById('regEmailInput')?.value.trim();
-        const phoneVal = document.getElementById('regPhoneInput')?.value.trim();
         const passVal = document.getElementById('regPasswordInput')?.value;
         const confirmPassVal = document.getElementById('regConfirmPasswordInput')?.value;
         const otpVal = document.getElementById('regOtpInput')?.value.trim();
+        const submitBtn = document.getElementById('btnRegSubmit');
 
         if (!nameVal) {
+            setAuthAlert('Vui lòng nhập họ và tên hiển thị!', 'danger');
             showToast('Vui lòng nhập họ và tên hiển thị!', 'fa-circle-exclamation');
+            document.getElementById('regNameInput')?.focus();
             return;
         }
 
-        if (isEmail) {
-            if (!emailVal || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailVal)) {
-                showToast('Vui lòng nhập địa chỉ Gmail / Email hợp lệ!', 'fa-circle-exclamation');
-                return;
-            }
-            const exists = CONTACTS_DIRECTORY.some((u) => u.email && u.email.toLowerCase() === emailVal.toLowerCase());
-            if (exists) {
-                showToast('Email này đã được đăng ký! Vui lòng Đăng nhập hoặc dùng Email khác.', 'fa-triangle-exclamation');
-                return;
-            }
-        } else {
-            const cleanPhone = (phoneVal || '').replace(/[^0-9]/g, '');
-            if (!cleanPhone || cleanPhone.length < 9) {
-                showToast('Vui lòng nhập số điện thoại hợp lệ (tối thiểu 9 số)!', 'fa-circle-exclamation');
-                return;
-            }
-            const exists = CONTACTS_DIRECTORY.some((u) => u.phone && u.phone.replace(/[^0-9]/g, '') === cleanPhone);
-            if (exists) {
-                showToast('Số điện thoại này đã được đăng ký! Vui lòng Đăng nhập hoặc dùng số khác.', 'fa-triangle-exclamation');
-                return;
-            }
+        if (!emailVal || !emailVal.includes('@')) {
+            setAuthAlert('Vui lòng nhập địa chỉ Gmail hợp lệ!', 'danger');
+            showToast('Vui lòng nhập địa chỉ Gmail hợp lệ!', 'fa-circle-exclamation');
+            document.getElementById('regEmailInput')?.focus();
+            return;
         }
 
         if (!passVal || passVal.length < 6) {
+            setAuthAlert('Mật khẩu phải có ít nhất 6 ký tự!', 'danger');
             showToast('Mật khẩu phải có ít nhất 6 ký tự!', 'fa-circle-exclamation');
+            document.getElementById('regPasswordInput')?.focus();
             return;
         }
 
         if (passVal !== confirmPassVal) {
-            showToast('Xác nhận mật khẩu không khớp! Vui lòng nhập lại.', 'fa-circle-xmark');
+            setAuthAlert('Mật khẩu xác nhận không khớp! Vui lòng nhập lại.', 'danger');
+            showToast('Mật khẩu xác nhận không khớp! Vui lòng nhập lại.', 'fa-circle-xmark');
+            document.getElementById('regConfirmPasswordInput')?.focus();
             return;
         }
 
-        const targetDest = isEmail ? emailVal : phoneVal;
-        if (!verifyAuthOtp(targetDest, otpVal)) {
-            showToast('Mã OTP không chính xác hoặc đã hết hạn! Vui lòng lấy mã mới (hoặc nhập 123456 để test).', 'fa-triangle-exclamation');
+        if (!otpVal) {
+            setAuthAlert('Vui lòng nhấn nút "Gửi mã OTP" bên trên để nhận mã xác thực qua Gmail và nhập 6 số vào ô mã xác minh!', 'danger');
+            showToast('Chưa nhập mã OTP xác thực Gmail!', 'fa-circle-exclamation');
+            document.getElementById('regOtpInput')?.focus();
             return;
         }
 
-        const newUser = {
-            id: 'user-' + Date.now(),
-            name: nameVal,
-            shortName: nameVal.split(/\s+/).slice(-2).join(' '),
-            email: isEmail ? emailVal : `${phoneVal.replace(/[^0-9]/g, '')}@chatspace.local`,
-            phone: isEmail ? '' : phoneVal.replace(/[^0-9]/g, ''),
-            password: passVal,
-            online: true,
-            avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(nameVal)}&background=1d72b8&color=fff&bold=true`
-        };
+        if (otpVal.length < 6) {
+            setAuthAlert('Mã OTP gồm đúng 6 chữ số, vui lòng kiểm tra hộp thư Gmail!', 'danger');
+            document.getElementById('regOtpInput')?.focus();
+            return;
+        }
 
-        CONTACTS_DIRECTORY.unshift(newUser);
-        saveContactsDirectory();
-        loginAsUser(newUser);
-        showToast(`Đăng ký tài khoản thành công! Chào mừng bạn, ${newUser.name}.`, 'fa-circle-check');
+        const originalBtnHtml = submitBtn ? submitBtn.innerHTML : '';
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span> Đang tạo tài khoản...';
+        }
+
+        try {
+            const response = await fetch(`${getBackendUrl()}/api/auth/register`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: nameVal,
+                    email: emailVal,
+                    password: passVal,
+                    otp: otpVal
+                })
+            });
+            const data = await response.json();
+
+            if (response.ok && data.success && data.user) {
+                setAuthAlert('Đăng ký tài khoản thành công! Đang vào ChatSpace...', 'success');
+                showToast(`Đăng ký thành công! Chào mừng ${data.user.name}.`, 'fa-circle-check');
+                loginAsUser(data.user, true);
+            } else {
+                const errorMsg = data.message || 'Đăng ký tài khoản không thành công!';
+                setAuthAlert(errorMsg, 'danger');
+                showToast(errorMsg, 'fa-circle-xmark');
+            }
+        } catch (err) {
+            console.error('Lỗi khi gọi API register:', err);
+            const errText = 'Lỗi kết nối máy chủ khi đăng ký tài khoản. Vui lòng thử lại sau!';
+            setAuthAlert(errText, 'danger');
+            showToast(errText, 'fa-triangle-exclamation');
+        } finally {
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = originalBtnHtml;
+            }
+        }
     });
 
     // 7. Submit Form Quên mật khẩu
     const forgotForm = document.getElementById('forgotForm');
-    forgotForm?.addEventListener('submit', (e) => {
+    forgotForm?.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const isEmail = currentForgotMethod === 'email';
+        setAuthAlert('');
         const emailVal = document.getElementById('forgotEmailInput')?.value.trim();
-        const phoneVal = document.getElementById('forgotPhoneInput')?.value.trim();
         const otpVal = document.getElementById('forgotOtpInput')?.value.trim();
         const newPassVal = document.getElementById('forgotNewPasswordInput')?.value;
         const confirmNewPassVal = document.getElementById('forgotConfirmNewPasswordInput')?.value;
+        const submitBtn = document.getElementById('btnForgotSubmit');
 
-        const targetDest = isEmail ? emailVal : phoneVal;
-        if (!targetDest) {
-            showToast(`Vui lòng nhập ${isEmail ? 'Gmail' : 'Số điện thoại'} đã đăng ký!`, 'fa-circle-exclamation');
+        if (!emailVal || !emailVal.includes('@')) {
+            setAuthAlert('Vui lòng nhập địa chỉ Gmail đã đăng ký!', 'danger');
+            showToast('Vui lòng nhập địa chỉ Gmail đã đăng ký!', 'fa-circle-exclamation');
             return;
         }
 
-        let user = null;
-        if (isEmail) {
-            user = CONTACTS_DIRECTORY.find((u) => u.email && u.email.toLowerCase() === emailVal.toLowerCase());
-        } else {
-            const cleanPhone = phoneVal.replace(/[^0-9]/g, '');
-            user = CONTACTS_DIRECTORY.find((u) => u.phone && u.phone.replace(/[^0-9]/g, '') === cleanPhone);
-        }
-
-        if (!user) {
-            showToast(`Không tìm thấy tài khoản với ${isEmail ? 'Gmail' : 'SĐT'} này!`, 'fa-triangle-exclamation');
-            return;
-        }
-
-        if (!verifyAuthOtp(targetDest, otpVal)) {
-            showToast('Mã OTP không chính xác hoặc đã hết hạn! Vui lòng lấy mã mới (hoặc nhập 123456 để test).', 'fa-triangle-exclamation');
+        if (!otpVal || otpVal.length < 6) {
+            setAuthAlert('Vui lòng nhập mã OTP 6 số đã nhận từ Gmail!', 'danger');
+            showToast('Vui lòng nhập mã OTP 6 số từ Gmail!', 'fa-circle-exclamation');
             return;
         }
 
         if (!newPassVal || newPassVal.length < 6) {
+            setAuthAlert('Mật khẩu mới phải có ít nhất 6 ký tự!', 'danger');
             showToast('Mật khẩu mới phải có ít nhất 6 ký tự!', 'fa-circle-exclamation');
             return;
         }
 
         if (newPassVal !== confirmNewPassVal) {
+            setAuthAlert('Mật khẩu xác nhận không khớp! Vui lòng nhập lại.', 'danger');
             showToast('Mật khẩu xác nhận không khớp! Vui lòng nhập lại.', 'fa-circle-xmark');
             return;
         }
 
-        user.password = newPassVal;
-        saveContactsDirectory();
-        loginAsUser(user);
-        showToast('Đặt lại mật khẩu thành công! Đã đăng nhập vào hệ thống.', 'fa-circle-check');
+        const originalBtnHtml = submitBtn ? submitBtn.innerHTML : '';
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span> Đang cập nhật mật khẩu...';
+        }
+
+        try {
+            const response = await fetch(`${getBackendUrl()}/api/auth/forgot-password`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    email: emailVal,
+                    otp: otpVal,
+                    newPassword: newPassVal
+                })
+            });
+            const data = await response.json();
+
+            if (response.ok && data.success) {
+                setAuthAlert('Đặt lại mật khẩu thành công! Bạn có thể đăng nhập ngay.', 'success');
+                showToast('Đặt lại mật khẩu thành công!', 'fa-circle-check');
+                setTimeout(() => {
+                    setAuthTab('login');
+                    const loginEmailInput = document.getElementById('loginEmailInput');
+                    if (loginEmailInput) loginEmailInput.value = emailVal;
+                    document.getElementById('loginPasswordInput')?.focus();
+                }, 1200);
+            } else {
+                const errorMsg = data.message || 'Không thể đặt lại mật khẩu!';
+                setAuthAlert(errorMsg, 'danger');
+                showToast(errorMsg, 'fa-circle-xmark');
+            }
+        } catch (err) {
+            console.error('Lỗi khi gọi API forgot-password:', err);
+            const errText = 'Lỗi kết nối máy chủ khi đổi mật khẩu. Vui lòng thử lại!';
+            setAuthAlert(errText, 'danger');
+            showToast(errText, 'fa-triangle-exclamation');
+        } finally {
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = originalBtnHtml;
+            }
+        }
     });
 
     // Gửi tin nhắn & phát tín hiệu "Đang soạn tin nhắn..." sang các Tab khác
@@ -3062,31 +3207,36 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Mở màn hình Đăng nhập / Đổi tài khoản
     const authScreen = document.getElementById('authScreen');
-    const openAuthScreen = (tab = 'login') => {
-        renderSavedAccountsOnAuthScreen();
+    const openAuthScreen = (tab = 'login', isLoggedOut = false) => {
+        setAuthAlert('');
         setAuthTab(tab);
-        if (CURRENT_USER.email) {
+        const closeBtn = document.getElementById('btnCloseAuthScreen');
+        if (closeBtn) {
+            closeBtn.classList.toggle('d-none', !CURRENT_USER.id || isLoggedOut);
+        }
+        if (CURRENT_USER.email && !isLoggedOut) {
             const loginEmail = document.getElementById('loginEmailInput');
             if (loginEmail) loginEmail.value = CURRENT_USER.email;
-            setLoginMethod('email');
-        } else if (CURRENT_USER.phone) {
-            const loginPhone = document.getElementById('loginPhoneInput');
-            if (loginPhone) loginPhone.value = CURRENT_USER.phone;
-            setLoginMethod('phone');
+        } else {
+            const loginEmail = document.getElementById('loginEmailInput');
+            if (loginEmail) loginEmail.value = '';
+            const loginPass = document.getElementById('loginPasswordInput');
+            if (loginPass) loginPass.value = '';
         }
-        const loginPass = document.getElementById('loginPasswordInput');
-        if (loginPass && CURRENT_USER.password) loginPass.value = CURRENT_USER.password;
 
         authScreen?.classList.remove('d-none');
     };
-    document.getElementById('btnSwitchAccount')?.addEventListener('click', () => openAuthScreen('login'));
-    document.getElementById('btnHeaderSwitchAccount')?.addEventListener('click', () => openAuthScreen('login'));
-    document.getElementById('btnLogoutFromSettings')?.addEventListener('click', () => openAuthScreen('login'));
+    document.getElementById('btnSwitchAccount')?.addEventListener('click', () => openAuthScreen('login', false));
+    document.getElementById('btnHeaderSwitchAccount')?.addEventListener('click', () => openAuthScreen('login', false));
+    document.getElementById('btnLogoutFromSettings')?.addEventListener('click', () => logoutCurrentUser());
     document.getElementById('btnCloseAuthScreen')?.addEventListener('click', () => {
-        if (CURRENT_USER.id) authScreen.classList.add('d-none');
+        if (CURRENT_USER.id) authScreen?.classList.add('d-none');
     });
     authScreen?.addEventListener('click', (e) => {
-        if (e.target === authScreen && CURRENT_USER.id) authScreen.classList.add('d-none');
+        const closeBtn = document.getElementById('btnCloseAuthScreen');
+        if (e.target === authScreen && CURRENT_USER.id && closeBtn && !closeBtn.classList.contains('d-none')) {
+            authScreen?.classList.add('d-none');
+        }
     });
     document.getElementById('btnGoogleOAuth')?.addEventListener('click', (event) => {
         event.preventDefault();

@@ -12,7 +12,7 @@ public class User {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "google_sub", nullable = false, unique = true, length = 255)
+    @Column(name = "google_sub", length = 255)
     private String googleSub;
 
     @Column(name = "email", nullable = false, length = 255)
@@ -23,6 +23,9 @@ public class User {
 
     @Column(name = "avatar_url", length = 1000)
     private String avatarUrl;
+
+    @Column(name = "password_hash", length = 255)
+    private String passwordHash;
 
     @Column(name = "created_at", nullable = false,
             insertable = false, updatable = false)
@@ -36,6 +39,10 @@ public class User {
 
     public Long getId() {
         return id;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
     }
 
     public String getGoogleSub() {
@@ -68,6 +75,14 @@ public class User {
 
     public void setAvatarUrl(String avatarUrl) {
         this.avatarUrl = avatarUrl;
+    }
+
+    public String getPasswordHash() {
+        return passwordHash;
+    }
+
+    public void setPasswordHash(String passwordHash) {
+        this.passwordHash = passwordHash;
     }
 
     public LocalDateTime getCreatedAt() {
