@@ -23,6 +23,8 @@ const DEFAULT_ACCOUNTS = [
         shortName: 'Minh Đức',
         initials: 'MĐ',
         email: 'minhduchd20059b@gmail.com',
+        phone: '0981234567',
+        password: '123456',
         online: true,
         avatar: 'https://ui-avatars.com/api/?name=Minh+Duc&background=1d72b8&color=fff&bold=true'
     },
@@ -32,6 +34,8 @@ const DEFAULT_ACCOUNTS = [
         shortName: 'An Nguyễn',
         initials: 'AN',
         email: 'annguyen.hau@gmail.com',
+        phone: '0912345678',
+        password: '123456',
         online: true,
         avatar: 'https://ui-avatars.com/api/?name=An+Nguyen&background=1d72b8&color=fff&bold=true'
     },
@@ -41,6 +45,8 @@ const DEFAULT_ACCOUNTS = [
         shortName: 'Bình Minh',
         initials: 'BM',
         email: 'binhminh.ltm@gmail.com',
+        phone: '0934567890',
+        password: '123456',
         online: true,
         avatar: 'https://ui-avatars.com/api/?name=Binh+Minh&background=64748b&color=fff&bold=true'
     },
@@ -50,6 +56,8 @@ const DEFAULT_ACCOUNTS = [
         shortName: 'Quỳnh Linh',
         initials: 'QL',
         email: 'quynhlinh.cntt@gmail.com',
+        phone: '0978901234',
+        password: '123456',
         online: true,
         avatar: 'https://ui-avatars.com/api/?name=Quynh+Linh&background=64748b&color=fff&bold=true'
     },
@@ -59,6 +67,8 @@ const DEFAULT_ACCOUNTS = [
         shortName: 'Thu Hà',
         initials: 'TH',
         email: 'thuha.hau@gmail.com',
+        phone: '0967890123',
+        password: '123456',
         online: true,
         avatar: 'https://ui-avatars.com/api/?name=Thu+Ha&background=0ea5e9&color=fff&bold=true'
     },
@@ -68,6 +78,8 @@ const DEFAULT_ACCOUNTS = [
         shortName: 'Hoàng Nam',
         initials: 'HN',
         email: 'hoangnam.dev@gmail.com',
+        phone: '0945678901',
+        password: '123456',
         online: false,
         avatar: 'https://ui-avatars.com/api/?name=Hoang+Nam&background=64748b&color=fff&bold=true'
     }
@@ -335,9 +347,159 @@ function saveTabUser(userObj) {
 function loadContactsDirectory() {
     try {
         const raw = localStorage.getItem(STORAGE_KEYS.CONTACTS);
-        return raw ? JSON.parse(raw) : [...DEFAULT_ACCOUNTS];
+        const list = raw ? JSON.parse(raw) : [...DEFAULT_ACCOUNTS];
+        // Đảm bảo mọi tài khoản đều có mật khẩu và số điện thoại dự phòng
+        return list.map((u, idx) => {
+            const def = DEFAULT_ACCOUNTS.find((d) => d.id === u.id || (d.email && u.email && d.email.toLowerCase() === u.email.toLowerCase()));
+            return {
+                ...u,
+                phone: u.phone || def?.phone || `098${String(idx + 1000000).slice(-7)}`,
+                password: u.password || def?.password || '123456'
+            };
+        });
     } catch (_) {
         return [...DEFAULT_ACCOUNTS];
+    }
+}
+
+// --------------------------------------------------------------------------
+// QUẢN LÝ MÃ OTP XÁC THỰC (GMAIL / SĐT) & ĐIỀU HƯỚNG TAB XÁC THỰC
+// --------------------------------------------------------------------------
+const PENDING_AUTH_OTPS = new Map();
+const OTP_COOLDOWN_TIMERS = new Map();
+
+function sendAuthOtp(destination, buttonEl, hintEl) {
+    if (!destination) return null;
+    const destKey = destination.trim().toLowerCase();
+    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = Date.now() + 5 * 60 * 1000;
+
+    PENDING_AUTH_OTPS.set(destKey, {
+        code: otpCode,
+        expiresAt: expiresAt
+    });
+
+    showToast(`Mã xác thực OTP của bạn là: ${otpCode} (Hết hạn sau 5 phút)`, 'fa-key', 9000);
+    if (hintEl) {
+        hintEl.innerHTML = `<span class="text-success"><i class="fa-solid fa-circle-check me-1"></i>Đã gửi OTP tới <strong>${escapeHtml(destination)}</strong>. Mã thử nghiệm: <strong class="badge bg-primary text-white">${otpCode}</strong></span>`;
+    }
+
+    if (buttonEl) {
+        if (OTP_COOLDOWN_TIMERS.has(buttonEl.id)) {
+            clearInterval(OTP_COOLDOWN_TIMERS.get(buttonEl.id));
+        }
+        let countdown = 60;
+        buttonEl.disabled = true;
+        const originalText = buttonEl.textContent;
+        buttonEl.textContent = `Gửi lại (${countdown}s)`;
+
+        const timerId = setInterval(() => {
+            countdown -= 1;
+            if (countdown <= 0) {
+                clearInterval(timerId);
+                OTP_COOLDOWN_TIMERS.delete(buttonEl.id);
+                buttonEl.disabled = false;
+                buttonEl.textContent = originalText;
+            } else {
+                buttonEl.textContent = `Gửi lại (${countdown}s)`;
+            }
+        }, 1000);
+        OTP_COOLDOWN_TIMERS.set(buttonEl.id, timerId);
+    }
+
+    return otpCode;
+}
+
+function verifyAuthOtp(destination, enteredCode) {
+    if (!destination || !enteredCode) return false;
+    const cleanCode = enteredCode.trim();
+    if (cleanCode === '123456') return true; // Cho phép mã thử nghiệm nhanh
+
+    const destKey = destination.trim().toLowerCase();
+    const record = PENDING_AUTH_OTPS.get(destKey);
+    if (!record) return false;
+    if (Date.now() > record.expiresAt) {
+        PENDING_AUTH_OTPS.delete(destKey);
+        return false;
+    }
+    if (record.code === cleanCode) {
+        PENDING_AUTH_OTPS.delete(destKey);
+        return true;
+    }
+    return false;
+}
+
+let currentAuthTab = 'login';
+let currentLoginMethod = 'email';
+let currentRegMethod = 'email';
+let currentForgotMethod = 'email';
+
+function setAuthTab(tabName) {
+    currentAuthTab = tabName;
+    document.querySelectorAll('[data-auth-tab]').forEach((btn) => {
+        btn.classList.toggle('active', btn.getAttribute('data-auth-tab') === tabName);
+    });
+
+    const viewLogin = document.getElementById('authViewLogin');
+    const viewReg = document.getElementById('authViewRegister');
+    const viewForgot = document.getElementById('authViewForgot');
+
+    if (viewLogin) viewLogin.classList.toggle('d-none', tabName !== 'login');
+    if (viewReg) viewReg.classList.toggle('d-none', tabName !== 'register');
+    if (viewForgot) viewForgot.classList.toggle('d-none', tabName !== 'forgot');
+}
+
+function setLoginMethod(method) {
+    currentLoginMethod = method;
+    document.querySelectorAll('[data-login-method]').forEach((btn) => {
+        btn.classList.toggle('active', btn.getAttribute('data-login-method') === method);
+    });
+    const emailGroup = document.getElementById('loginEmailGroup');
+    const phoneGroup = document.getElementById('loginPhoneGroup');
+    if (method === 'email') {
+        emailGroup?.classList.remove('d-none');
+        phoneGroup?.classList.add('d-none');
+        document.getElementById('loginEmailInput')?.focus();
+    } else {
+        emailGroup?.classList.add('d-none');
+        phoneGroup?.classList.remove('d-none');
+        document.getElementById('loginPhoneInput')?.focus();
+    }
+}
+
+function setRegMethod(method) {
+    currentRegMethod = method;
+    document.querySelectorAll('[data-reg-method]').forEach((btn) => {
+        btn.classList.toggle('active', btn.getAttribute('data-reg-method') === method);
+    });
+    const emailGroup = document.getElementById('regEmailGroup');
+    const phoneGroup = document.getElementById('regPhoneGroup');
+    if (method === 'email') {
+        emailGroup?.classList.remove('d-none');
+        phoneGroup?.classList.add('d-none');
+        document.getElementById('regEmailInput')?.focus();
+    } else {
+        emailGroup?.classList.add('d-none');
+        phoneGroup?.classList.remove('d-none');
+        document.getElementById('regPhoneInput')?.focus();
+    }
+}
+
+function setForgotMethod(method) {
+    currentForgotMethod = method;
+    document.querySelectorAll('[data-forgot-method]').forEach((btn) => {
+        btn.classList.toggle('active', btn.getAttribute('data-forgot-method') === method);
+    });
+    const emailGroup = document.getElementById('forgotEmailGroup');
+    const phoneGroup = document.getElementById('forgotPhoneGroup');
+    if (method === 'email') {
+        emailGroup?.classList.remove('d-none');
+        phoneGroup?.classList.add('d-none');
+        document.getElementById('forgotEmailInput')?.focus();
+    } else {
+        emailGroup?.classList.add('d-none');
+        phoneGroup?.classList.remove('d-none');
+        document.getElementById('forgotPhoneInput')?.focus();
     }
 }
 
@@ -705,7 +867,9 @@ function loginAsUser(userObj) {
         id: userObj.id,
         name: userObj.name,
         shortName: userObj.shortName || userObj.name.split(/\s+/).slice(-2).join(' '),
-        email: userObj.email,
+        email: userObj.email || '',
+        phone: userObj.phone || '',
+        password: userObj.password || '123456',
         online: true,
         avatar: userObj.avatar
     };
@@ -714,12 +878,18 @@ function loginAsUser(userObj) {
 
     // Đảm bảo tài khoản này có mặt trong CONTACTS_DIRECTORY chung
     const existingIdx = CONTACTS_DIRECTORY.findIndex(
-        (c) => c.id === CURRENT_USER.id || c.email.toLowerCase() === CURRENT_USER.email.toLowerCase()
+        (c) => c.id === CURRENT_USER.id || 
+               (c.email && CURRENT_USER.email && c.email.toLowerCase() === CURRENT_USER.email.toLowerCase()) ||
+               (c.phone && CURRENT_USER.phone && c.phone === CURRENT_USER.phone)
     );
     if (existingIdx === -1) {
         CONTACTS_DIRECTORY.unshift({ ...CURRENT_USER });
     } else {
-        CONTACTS_DIRECTORY[existingIdx].online = true;
+        CONTACTS_DIRECTORY[existingIdx] = {
+            ...CONTACTS_DIRECTORY[existingIdx],
+            ...CURRENT_USER,
+            online: true
+        };
     }
     saveContactsDirectory();
 
@@ -2046,7 +2216,7 @@ function updateBadgesCount() {
     }
 }
 
-function showToast(message, iconClass = 'fa-circle-info') {
+function showToast(message, iconClass = 'fa-circle-info', duration = 3200) {
     const container = document.getElementById('toastContainer');
     if (!container) return;
 
@@ -2057,7 +2227,7 @@ function showToast(message, iconClass = 'fa-circle-info') {
 
     setTimeout(() => {
         toast.remove();
-    }, 2800);
+    }, duration);
 }
 
 function playSubtleBeep() {
@@ -2613,34 +2783,260 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     document.getElementById('quickAddFriendForm')?.addEventListener('submit', handleQuickAddFriendByInput);
 
-    // Form Đăng nhập bằng Tên & Email thật
-    const loginForm = document.getElementById('loginForm');
-    loginForm.addEventListener('submit', (e) => {
+    // =========================================================================
+    // XỬ LÝ ĐĂNG NHẬP / ĐĂNG KÝ / QUÊN MẬT KHẨU (GMAIL, SĐT, OTP)
+    // =========================================================================
+
+    // 1. Chuyển đổi tab chính & tab phụ phương thức
+    document.querySelectorAll('[data-auth-tab]').forEach((btn) => {
+        btn.addEventListener('click', () => setAuthTab(btn.getAttribute('data-auth-tab')));
+    });
+    document.querySelectorAll('[data-login-method]').forEach((btn) => {
+        btn.addEventListener('click', () => setLoginMethod(btn.getAttribute('data-login-method')));
+    });
+    document.querySelectorAll('[data-reg-method]').forEach((btn) => {
+        btn.addEventListener('click', () => setRegMethod(btn.getAttribute('data-reg-method')));
+    });
+    document.querySelectorAll('[data-forgot-method]').forEach((btn) => {
+        btn.addEventListener('click', () => setForgotMethod(btn.getAttribute('data-forgot-method')));
+    });
+
+    // 2. Chuyển đổi qua lại giữa các view bằng liên kết
+    document.getElementById('btnGoToForgot')?.addEventListener('click', (e) => {
         e.preventDefault();
-        const nameVal = document.getElementById('loginNameInput').value.trim();
-        const emailVal = document.getElementById('loginEmailInput').value.trim();
-        if (!nameVal || !emailVal) return;
+        setAuthTab('forgot');
+    });
+    document.getElementById('linkGoToRegister')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        setAuthTab('register');
+    });
+    document.getElementById('linkGoToLogin')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        setAuthTab('login');
+    });
+    document.getElementById('linkBackToLoginFromForgot')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        setAuthTab('login');
+    });
 
-        // Kiểm tra xem email hoặc tên đã có trong danh bạ chưa
-        const existingUser = CONTACTS_DIRECTORY.find(
-            (u) =>
-                u.email.toLowerCase() === emailVal.toLowerCase() ||
-                u.name.toLowerCase() === nameVal.toLowerCase()
-        );
+    // 3. Nút ẩn/hiện mật khẩu
+    document.querySelectorAll('.btn-toggle-password').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const targetId = btn.getAttribute('data-toggle-target');
+            const targetInput = document.getElementById(targetId);
+            if (!targetInput) return;
+            const icon = btn.querySelector('i');
+            if (targetInput.type === 'password') {
+                targetInput.type = 'text';
+                icon?.classList.remove('fa-eye');
+                icon?.classList.add('fa-eye-slash');
+            } else {
+                targetInput.type = 'password';
+                icon?.classList.remove('fa-eye-slash');
+                icon?.classList.add('fa-eye');
+            }
+        });
+    });
 
-        if (existingUser) {
-            loginAsUser(existingUser);
-        } else {
-            const newUser = {
-                id: 'user-' + Date.now(),
-                name: nameVal,
-                shortName: nameVal.split(/\s+/).slice(-2).join(' '),
-                email: emailVal,
-                online: true,
-                avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(nameVal)}&background=0084ff&color=fff&bold=true`
-            };
-            loginAsUser(newUser);
+    // 4. Gửi mã OTP xác thực
+    document.getElementById('btnSendRegOtp')?.addEventListener('click', () => {
+        const isEmail = currentRegMethod === 'email';
+        const dest = isEmail
+            ? document.getElementById('regEmailInput')?.value.trim()
+            : document.getElementById('regPhoneInput')?.value.trim();
+        if (!dest) {
+            showToast(`Vui lòng nhập ${isEmail ? 'địa chỉ Gmail' : 'số điện thoại'} trước khi nhận mã OTP!`, 'fa-circle-exclamation');
+            return;
         }
+        sendAuthOtp(
+            dest,
+            document.getElementById('btnSendRegOtp'),
+            document.getElementById('regOtpHint')
+        );
+    });
+
+    document.getElementById('btnSendForgotOtp')?.addEventListener('click', () => {
+        const isEmail = currentForgotMethod === 'email';
+        const dest = isEmail
+            ? document.getElementById('forgotEmailInput')?.value.trim()
+            : document.getElementById('forgotPhoneInput')?.value.trim();
+        if (!dest) {
+            showToast(`Vui lòng nhập ${isEmail ? 'Gmail' : 'Số điện thoại'} trước khi nhận mã OTP!`, 'fa-circle-exclamation');
+            return;
+        }
+        sendAuthOtp(
+            dest,
+            document.getElementById('btnSendForgotOtp'),
+            document.getElementById('forgotOtpHint')
+        );
+    });
+
+    // 5. Submit Form Đăng nhập
+    const loginForm = document.getElementById('loginForm');
+    loginForm?.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const isEmail = currentLoginMethod === 'email';
+        const emailVal = document.getElementById('loginEmailInput')?.value.trim();
+        const phoneVal = document.getElementById('loginPhoneInput')?.value.trim();
+        const passVal = document.getElementById('loginPasswordInput')?.value;
+
+        if (isEmail && !emailVal) {
+            showToast('Vui lòng nhập địa chỉ Gmail / Email!', 'fa-circle-exclamation');
+            return;
+        }
+        if (!isEmail && !phoneVal) {
+            showToast('Vui lòng nhập số điện thoại!', 'fa-circle-exclamation');
+            return;
+        }
+        if (!passVal) {
+            showToast('Vui lòng nhập mật khẩu!', 'fa-circle-exclamation');
+            return;
+        }
+
+        let user = null;
+        if (isEmail) {
+            user = CONTACTS_DIRECTORY.find((u) => u.email && u.email.toLowerCase() === emailVal.toLowerCase());
+        } else {
+            const cleanPhone = phoneVal.replace(/[^0-9]/g, '');
+            user = CONTACTS_DIRECTORY.find((u) => u.phone && u.phone.replace(/[^0-9]/g, '') === cleanPhone);
+        }
+
+        if (!user) {
+            showToast(`Không tìm thấy tài khoản với ${isEmail ? 'Gmail' : 'SĐT'} này. Bạn có thể bấm "Đăng ký"!`, 'fa-triangle-exclamation');
+            return;
+        }
+
+        if (user.password && user.password !== passVal) {
+            showToast('Mật khẩu không chính xác! Vui lòng thử lại hoặc chọn Quên mật khẩu.', 'fa-circle-xmark');
+            return;
+        }
+
+        loginAsUser(user);
+        showToast(`Đăng nhập thành công! Chào mừng ${user.name}`, 'fa-circle-check');
+    });
+
+    // 6. Submit Form Đăng ký
+    const registerForm = document.getElementById('registerForm');
+    registerForm?.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const nameVal = document.getElementById('regNameInput')?.value.trim();
+        const isEmail = currentRegMethod === 'email';
+        const emailVal = document.getElementById('regEmailInput')?.value.trim();
+        const phoneVal = document.getElementById('regPhoneInput')?.value.trim();
+        const passVal = document.getElementById('regPasswordInput')?.value;
+        const confirmPassVal = document.getElementById('regConfirmPasswordInput')?.value;
+        const otpVal = document.getElementById('regOtpInput')?.value.trim();
+
+        if (!nameVal) {
+            showToast('Vui lòng nhập họ và tên hiển thị!', 'fa-circle-exclamation');
+            return;
+        }
+
+        if (isEmail) {
+            if (!emailVal || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailVal)) {
+                showToast('Vui lòng nhập địa chỉ Gmail / Email hợp lệ!', 'fa-circle-exclamation');
+                return;
+            }
+            const exists = CONTACTS_DIRECTORY.some((u) => u.email && u.email.toLowerCase() === emailVal.toLowerCase());
+            if (exists) {
+                showToast('Email này đã được đăng ký! Vui lòng Đăng nhập hoặc dùng Email khác.', 'fa-triangle-exclamation');
+                return;
+            }
+        } else {
+            const cleanPhone = (phoneVal || '').replace(/[^0-9]/g, '');
+            if (!cleanPhone || cleanPhone.length < 9) {
+                showToast('Vui lòng nhập số điện thoại hợp lệ (tối thiểu 9 số)!', 'fa-circle-exclamation');
+                return;
+            }
+            const exists = CONTACTS_DIRECTORY.some((u) => u.phone && u.phone.replace(/[^0-9]/g, '') === cleanPhone);
+            if (exists) {
+                showToast('Số điện thoại này đã được đăng ký! Vui lòng Đăng nhập hoặc dùng số khác.', 'fa-triangle-exclamation');
+                return;
+            }
+        }
+
+        if (!passVal || passVal.length < 6) {
+            showToast('Mật khẩu phải có ít nhất 6 ký tự!', 'fa-circle-exclamation');
+            return;
+        }
+
+        if (passVal !== confirmPassVal) {
+            showToast('Xác nhận mật khẩu không khớp! Vui lòng nhập lại.', 'fa-circle-xmark');
+            return;
+        }
+
+        const targetDest = isEmail ? emailVal : phoneVal;
+        if (!verifyAuthOtp(targetDest, otpVal)) {
+            showToast('Mã OTP không chính xác hoặc đã hết hạn! Vui lòng lấy mã mới (hoặc nhập 123456 để test).', 'fa-triangle-exclamation');
+            return;
+        }
+
+        const newUser = {
+            id: 'user-' + Date.now(),
+            name: nameVal,
+            shortName: nameVal.split(/\s+/).slice(-2).join(' '),
+            email: isEmail ? emailVal : `${phoneVal.replace(/[^0-9]/g, '')}@chatspace.local`,
+            phone: isEmail ? '' : phoneVal.replace(/[^0-9]/g, ''),
+            password: passVal,
+            online: true,
+            avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(nameVal)}&background=1d72b8&color=fff&bold=true`
+        };
+
+        CONTACTS_DIRECTORY.unshift(newUser);
+        saveContactsDirectory();
+        loginAsUser(newUser);
+        showToast(`Đăng ký tài khoản thành công! Chào mừng bạn, ${newUser.name}.`, 'fa-circle-check');
+    });
+
+    // 7. Submit Form Quên mật khẩu
+    const forgotForm = document.getElementById('forgotForm');
+    forgotForm?.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const isEmail = currentForgotMethod === 'email';
+        const emailVal = document.getElementById('forgotEmailInput')?.value.trim();
+        const phoneVal = document.getElementById('forgotPhoneInput')?.value.trim();
+        const otpVal = document.getElementById('forgotOtpInput')?.value.trim();
+        const newPassVal = document.getElementById('forgotNewPasswordInput')?.value;
+        const confirmNewPassVal = document.getElementById('forgotConfirmNewPasswordInput')?.value;
+
+        const targetDest = isEmail ? emailVal : phoneVal;
+        if (!targetDest) {
+            showToast(`Vui lòng nhập ${isEmail ? 'Gmail' : 'Số điện thoại'} đã đăng ký!`, 'fa-circle-exclamation');
+            return;
+        }
+
+        let user = null;
+        if (isEmail) {
+            user = CONTACTS_DIRECTORY.find((u) => u.email && u.email.toLowerCase() === emailVal.toLowerCase());
+        } else {
+            const cleanPhone = phoneVal.replace(/[^0-9]/g, '');
+            user = CONTACTS_DIRECTORY.find((u) => u.phone && u.phone.replace(/[^0-9]/g, '') === cleanPhone);
+        }
+
+        if (!user) {
+            showToast(`Không tìm thấy tài khoản với ${isEmail ? 'Gmail' : 'SĐT'} này!`, 'fa-triangle-exclamation');
+            return;
+        }
+
+        if (!verifyAuthOtp(targetDest, otpVal)) {
+            showToast('Mã OTP không chính xác hoặc đã hết hạn! Vui lòng lấy mã mới (hoặc nhập 123456 để test).', 'fa-triangle-exclamation');
+            return;
+        }
+
+        if (!newPassVal || newPassVal.length < 6) {
+            showToast('Mật khẩu mới phải có ít nhất 6 ký tự!', 'fa-circle-exclamation');
+            return;
+        }
+
+        if (newPassVal !== confirmNewPassVal) {
+            showToast('Mật khẩu xác nhận không khớp! Vui lòng nhập lại.', 'fa-circle-xmark');
+            return;
+        }
+
+        user.password = newPassVal;
+        saveContactsDirectory();
+        loginAsUser(user);
+        showToast('Đặt lại mật khẩu thành công! Đã đăng nhập vào hệ thống.', 'fa-circle-check');
     });
 
     // Gửi tin nhắn & phát tín hiệu "Đang soạn tin nhắn..." sang các Tab khác
@@ -2912,15 +3308,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Mở màn hình Đăng nhập / Đổi tài khoản
     const authScreen = document.getElementById('authScreen');
-    const openAuthScreen = () => {
+    const openAuthScreen = (tab = 'login') => {
         renderSavedAccountsOnAuthScreen();
-        document.getElementById('loginNameInput').value = CURRENT_USER.name;
-        document.getElementById('loginEmailInput').value = CURRENT_USER.email;
-        authScreen.classList.remove('d-none');
+        setAuthTab(tab);
+        if (CURRENT_USER.email) {
+            const loginEmail = document.getElementById('loginEmailInput');
+            if (loginEmail) loginEmail.value = CURRENT_USER.email;
+            setLoginMethod('email');
+        } else if (CURRENT_USER.phone) {
+            const loginPhone = document.getElementById('loginPhoneInput');
+            if (loginPhone) loginPhone.value = CURRENT_USER.phone;
+            setLoginMethod('phone');
+        }
+        const loginPass = document.getElementById('loginPasswordInput');
+        if (loginPass && CURRENT_USER.password) loginPass.value = CURRENT_USER.password;
+
+        authScreen?.classList.remove('d-none');
     };
-    document.getElementById('btnSwitchAccount')?.addEventListener('click', openAuthScreen);
-    document.getElementById('btnHeaderSwitchAccount')?.addEventListener('click', openAuthScreen);
-    document.getElementById('btnLogoutFromSettings')?.addEventListener('click', openAuthScreen);
+    document.getElementById('btnSwitchAccount')?.addEventListener('click', () => openAuthScreen('login'));
+    document.getElementById('btnHeaderSwitchAccount')?.addEventListener('click', () => openAuthScreen('login'));
+    document.getElementById('btnLogoutFromSettings')?.addEventListener('click', () => openAuthScreen('login'));
     document.getElementById('btnCloseAuthScreen')?.addEventListener('click', () => {
         authScreen.classList.add('d-none');
     });
@@ -2929,16 +3336,19 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     document.getElementById('btnGoogleOAuth')?.addEventListener('click', (e) => {
         e.preventDefault();
-        const nameVal = document.getElementById('loginNameInput')?.value.trim() || CURRENT_USER.name;
-        const emailVal = document.getElementById('loginEmailInput')?.value.trim() || CURRENT_USER.email;
-        loginAsUser({
-            id: 'user-google-' + emailVal.toLowerCase().replace(/[^a-z0-9]/g, ''),
-            name: nameVal,
-            shortName: nameVal.split(/\s+/).slice(-2).join(' '),
-            email: emailVal,
+        const existingGoogle = CONTACTS_DIRECTORY.find((u) => u.email && u.email.endsWith('@gmail.com'));
+        const targetUser = existingGoogle || {
+            id: 'user-google-' + Date.now(),
+            name: CURRENT_USER.name || 'Người dùng Google',
+            shortName: (CURRENT_USER.name || 'Người dùng').split(/\s+/).slice(-2).join(' '),
+            email: CURRENT_USER.email || 'user.google@gmail.com',
+            phone: CURRENT_USER.phone || '0988888888',
+            password: '123456',
             online: true,
-            avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(nameVal)}&background=0095f6&color=fff&bold=true`
-        });
+            avatar: `https://ui-avatars.com/api/?name=Google+User&background=4285F4&color=fff&bold=true`
+        };
+        loginAsUser(targetUser);
+        showToast(`Đã kết nối tài khoản Google: ${targetUser.email}`, 'fa-circle-check');
     });
 
     // Chọn Emoji

@@ -22,65 +22,372 @@
 <body>
 
     <!-- =====================================================================
-         1. MÀN HÌNH ĐĂNG NHẬP / CHUYỂN TÀI KHOẢN
+         1. MÀN HÌNH ĐĂNG NHẬP / ĐĂNG KÝ / QUÊN MẬT KHẨU (GMAIL, SĐT)
          ===================================================================== -->
     <section id="authScreen" class="auth-screen d-none">
         <div class="auth-card position-relative">
             <button type="button" id="btnCloseAuthScreen" class="icon-btn position-absolute top-0 end-0 m-2" title="Đóng">
                 <i class="fa-solid fa-xmark"></i>
             </button>
+
             <div class="auth-brand">
                 <div class="brand-logo-circle">CS</div>
                 <h1 class="auth-title">CHATSPACE</h1>
                 <p class="auth-subtitle">
-                    Hệ thống nhắn tin trực tuyến thời gian thực qua WebSocket STOMP.
+                    Hệ thống nhắn tin thời gian thực qua WebSocket STOMP
                 </p>
             </div>
 
-            <form id="loginForm" class="auth-form text-start" autocomplete="on">
-                <div class="mb-2">
-                    <input
-                        type="text"
-                        id="loginNameInput"
-                        class="form-control auth-input"
-                        placeholder="Tên hiển thị của bạn"
-                        required
-                    >
-                </div>
-
-                <div class="mb-3">
-                    <input
-                        type="email"
-                        id="loginEmailInput"
-                        class="form-control auth-input"
-                        placeholder="Email đăng nhập"
-                        required
-                    >
-                </div>
-
-                <button type="submit" class="btn-cs-primary w-100">
-                    Đăng nhập vào ChatSpace
+            <!-- TAB ĐIỀU HƯỚNG CHÍNH: ĐĂNG NHẬP / ĐĂNG KÝ / QUÊN MẬT KHẨU -->
+            <div class="auth-main-tabs" role="tablist">
+                <button type="button" class="auth-tab-btn active" data-auth-tab="login">
+                    Đăng nhập
                 </button>
-            </form>
-
-            <div class="auth-divider">
-                <span>HOẶC</span>
+                <button type="button" class="auth-tab-btn" data-auth-tab="register">
+                    Đăng ký
+                </button>
+                <button type="button" class="auth-tab-btn" data-auth-tab="forgot">
+                    Quên mật khẩu
+                </button>
             </div>
 
-            <div class="auth-actions">
-                <a href="/oauth2/authorization/google" id="btnGoogleOAuth" class="btn-google-oauth">
-                    <svg class="google-icon" viewBox="0 0 24 24" width="18" height="18" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
-                        <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-                        <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
-                        <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
-                    </svg>
-                    <span>Đăng nhập bằng Google</span>
-                </a>
+            <!-- ================= VIEW 1: ĐĂNG NHẬP ================= -->
+            <div id="authViewLogin" class="auth-view-panel">
+                <!-- Chuyển đổi phương thức: Gmail / SĐT -->
+                <div class="auth-sub-tabs mb-3">
+                    <button type="button" class="auth-sub-tab active" data-login-method="email">
+                        <i class="fa-solid fa-envelope me-1"></i> Bằng Gmail / Email
+                    </button>
+                    <button type="button" class="auth-sub-tab" data-login-method="phone">
+                        <i class="fa-solid fa-phone me-1"></i> Bằng Số điện thoại
+                    </button>
+                </div>
+
+                <form id="loginForm" class="auth-form text-start" autocomplete="on">
+                    <!-- Nhập Gmail -->
+                    <div class="mb-2" id="loginEmailGroup">
+                        <label class="form-label auth-label">Địa chỉ Gmail / Email</label>
+                        <div class="auth-input-icon-wrap">
+                            <i class="fa-regular fa-envelope input-icon"></i>
+                            <input
+                                type="email"
+                                id="loginEmailInput"
+                                class="form-control auth-input"
+                                placeholder="name@gmail.com"
+                                autocomplete="username"
+                            >
+                        </div>
+                    </div>
+
+                    <!-- Nhập Số điện thoại -->
+                    <div class="mb-2 d-none" id="loginPhoneGroup">
+                        <label class="form-label auth-label">Số điện thoại</label>
+                        <div class="auth-input-icon-wrap">
+                            <i class="fa-solid fa-mobile-screen input-icon"></i>
+                            <input
+                                type="tel"
+                                id="loginPhoneInput"
+                                class="form-control auth-input"
+                                placeholder="VD: 0987654321"
+                                autocomplete="tel"
+                            >
+                        </div>
+                    </div>
+
+                    <!-- Mật khẩu -->
+                    <div class="mb-2">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <label class="form-label auth-label mb-0">Mật khẩu</label>
+                            <button type="button" class="btn-link-xs p-0 text-decoration-none" id="btnGoToForgot">
+                                Quên mật khẩu?
+                            </button>
+                        </div>
+                        <div class="auth-input-icon-wrap password-wrap">
+                            <i class="fa-solid fa-lock input-icon"></i>
+                            <input
+                                type="password"
+                                id="loginPasswordInput"
+                                class="form-control auth-input"
+                                placeholder="Nhập mật khẩu..."
+                                autocomplete="current-password"
+                                required
+                            >
+                            <button type="button" class="btn-toggle-password" data-toggle-target="loginPasswordInput" title="Hiện/Ẩn mật khẩu">
+                                <i class="fa-regular fa-eye"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn-cs-primary w-100 mt-2">
+                        <i class="fa-solid fa-right-to-bracket me-1"></i> Đăng nhập vào ChatSpace
+                    </button>
+                </form>
+
+                <div class="auth-divider">
+                    <span>HOẶC</span>
+                </div>
+
+                <div class="auth-actions">
+                    <a href="/oauth2/authorization/google" id="btnGoogleOAuth" class="btn-google-oauth">
+                        <svg class="google-icon" viewBox="0 0 24 24" width="18" height="18" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                            <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                            <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+                            <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                        </svg>
+                        <span>Đăng nhập nhanh bằng Google</span>
+                    </a>
+                </div>
+
+                <div class="auth-switch-footer mt-3">
+                    Chưa có tài khoản? <a href="#" id="linkGoToRegister" class="fw-semibold">Đăng ký ngay</a>
+                </div>
             </div>
 
+            <!-- ================= VIEW 2: ĐĂNG KÝ ================= -->
+            <div id="authViewRegister" class="auth-view-panel d-none">
+                <!-- Chuyển đổi phương thức đăng ký: Gmail / SĐT -->
+                <div class="auth-sub-tabs mb-3">
+                    <button type="button" class="auth-sub-tab active" data-reg-method="email">
+                        <i class="fa-solid fa-envelope me-1"></i> Đăng ký bằng Gmail
+                    </button>
+                    <button type="button" class="auth-sub-tab" data-reg-method="phone">
+                        <i class="fa-solid fa-phone me-1"></i> Đăng ký bằng SĐT
+                    </button>
+                </div>
+
+                <form id="registerForm" class="auth-form text-start" autocomplete="on">
+                    <!-- Họ và tên -->
+                    <div class="mb-2">
+                        <label class="form-label auth-label">Họ và tên hiển thị</label>
+                        <div class="auth-input-icon-wrap">
+                            <i class="fa-regular fa-user input-icon"></i>
+                            <input
+                                type="text"
+                                id="regNameInput"
+                                class="form-control auth-input"
+                                placeholder="Ví dụ: Nguyễn Văn An"
+                                required
+                            >
+                        </div>
+                    </div>
+
+                    <!-- Gmail đăng ký -->
+                    <div class="mb-2" id="regEmailGroup">
+                        <label class="form-label auth-label">Địa chỉ Gmail</label>
+                        <div class="auth-input-icon-wrap">
+                            <i class="fa-regular fa-envelope input-icon"></i>
+                            <input
+                                type="email"
+                                id="regEmailInput"
+                                class="form-control auth-input"
+                                placeholder="username@gmail.com"
+                            >
+                        </div>
+                    </div>
+
+                    <!-- Số điện thoại đăng ký -->
+                    <div class="mb-2 d-none" id="regPhoneGroup">
+                        <label class="form-label auth-label">Số điện thoại</label>
+                        <div class="auth-input-icon-wrap">
+                            <i class="fa-solid fa-mobile-screen input-icon"></i>
+                            <input
+                                type="tel"
+                                id="regPhoneInput"
+                                class="form-control auth-input"
+                                placeholder="VD: 0987654321"
+                            >
+                        </div>
+                    </div>
+
+                    <!-- Mật khẩu -->
+                    <div class="mb-2">
+                        <label class="form-label auth-label">Mật khẩu</label>
+                        <div class="auth-input-icon-wrap password-wrap">
+                            <i class="fa-solid fa-lock input-icon"></i>
+                            <input
+                                type="password"
+                                id="regPasswordInput"
+                                class="form-control auth-input"
+                                placeholder="Tạo mật khẩu (tối thiểu 6 ký tự)..."
+                                required
+                            >
+                            <button type="button" class="btn-toggle-password" data-toggle-target="regPasswordInput" title="Hiện/Ẩn mật khẩu">
+                                <i class="fa-regular fa-eye"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Xác nhận mật khẩu -->
+                    <div class="mb-2">
+                        <label class="form-label auth-label">Xác nhận lại mật khẩu</label>
+                        <div class="auth-input-icon-wrap password-wrap">
+                            <i class="fa-solid fa-shield-halved input-icon"></i>
+                            <input
+                                type="password"
+                                id="regConfirmPasswordInput"
+                                class="form-control auth-input"
+                                placeholder="Nhập lại mật khẩu..."
+                                required
+                            >
+                            <button type="button" class="btn-toggle-password" data-toggle-target="regConfirmPasswordInput" title="Hiện/Ẩn mật khẩu">
+                                <i class="fa-regular fa-eye"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Mã xác nhận OTP -->
+                    <div class="mb-3">
+                        <label class="form-label auth-label">Mã xác minh (OTP)</label>
+                        <div class="d-flex gap-2">
+                            <div class="auth-input-icon-wrap flex-grow-1">
+                                <i class="fa-solid fa-key input-icon"></i>
+                                <input
+                                    type="text"
+                                    id="regOtpInput"
+                                    class="form-control auth-input text-center fw-bold letter-spacing-1"
+                                    placeholder="Nhập 6 số OTP"
+                                    maxlength="6"
+                                    required
+                                >
+                            </div>
+                            <button type="button" id="btnSendRegOtp" class="btn btn-outline-primary btn-sm text-nowrap px-3">
+                                Gửi mã OTP
+                            </button>
+                        </div>
+                        <div class="small text-muted mt-1" id="regOtpHint">
+                            Nhấn "Gửi mã OTP" để nhận mã xác thực tới Gmail/SĐT.
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn-cs-primary w-100">
+                        <i class="fa-solid fa-user-plus me-1"></i> Tạo tài khoản mới
+                    </button>
+                </form>
+
+                <div class="auth-switch-footer mt-3">
+                    Đã có tài khoản? <a href="#" id="linkGoToLogin" class="fw-semibold">Đăng nhập ngay</a>
+                </div>
+            </div>
+
+            <!-- ================= VIEW 3: QUÊN MẬT KHẨU ================= -->
+            <div id="authViewForgot" class="auth-view-panel d-none">
+                <!-- Chuyển đổi phương thức khôi phục: Gmail / SĐT -->
+                <div class="auth-sub-tabs mb-3">
+                    <button type="button" class="auth-sub-tab active" data-forgot-method="email">
+                        <i class="fa-solid fa-envelope me-1"></i> Qua Gmail / Email
+                    </button>
+                    <button type="button" class="auth-sub-tab" data-forgot-method="phone">
+                        <i class="fa-solid fa-phone me-1"></i> Qua Số điện thoại
+                    </button>
+                </div>
+
+                <form id="forgotForm" class="auth-form text-start" autocomplete="off">
+                    <!-- Nhập Gmail khôi phục -->
+                    <div class="mb-2" id="forgotEmailGroup">
+                        <label class="form-label auth-label">Nhập Gmail đã đăng ký</label>
+                        <div class="auth-input-icon-wrap">
+                            <i class="fa-regular fa-envelope input-icon"></i>
+                            <input
+                                type="email"
+                                id="forgotEmailInput"
+                                class="form-control auth-input"
+                                placeholder="name@gmail.com"
+                            >
+                        </div>
+                    </div>
+
+                    <!-- Nhập SĐT khôi phục -->
+                    <div class="mb-2 d-none" id="forgotPhoneGroup">
+                        <label class="form-label auth-label">Nhập Số điện thoại đã đăng ký</label>
+                        <div class="auth-input-icon-wrap">
+                            <i class="fa-solid fa-mobile-screen input-icon"></i>
+                            <input
+                                type="tel"
+                                id="forgotPhoneInput"
+                                class="form-control auth-input"
+                                placeholder="VD: 0987654321"
+                            >
+                        </div>
+                    </div>
+
+                    <!-- Cụm gửi & nhập OTP -->
+                    <div class="mb-2">
+                        <label class="form-label auth-label">Mã xác minh (OTP)</label>
+                        <div class="d-flex gap-2">
+                            <div class="auth-input-icon-wrap flex-grow-1">
+                                <i class="fa-solid fa-key input-icon"></i>
+                                <input
+                                    type="text"
+                                    id="forgotOtpInput"
+                                    class="form-control auth-input text-center fw-bold letter-spacing-1"
+                                    placeholder="Nhập 6 số OTP"
+                                    maxlength="6"
+                                    required
+                                >
+                            </div>
+                            <button type="button" id="btnSendForgotOtp" class="btn btn-outline-primary btn-sm text-nowrap px-3">
+                                Nhận mã OTP
+                            </button>
+                        </div>
+                        <div class="small text-muted mt-1" id="forgotOtpHint">
+                            Mã xác nhận gồm 6 số sẽ được gửi tới tài khoản của bạn.
+                        </div>
+                    </div>
+
+                    <!-- Mật khẩu mới -->
+                    <div class="mb-2">
+                        <label class="form-label auth-label">Mật khẩu mới</label>
+                        <div class="auth-input-icon-wrap password-wrap">
+                            <i class="fa-solid fa-lock input-icon"></i>
+                            <input
+                                type="password"
+                                id="forgotNewPasswordInput"
+                                class="form-control auth-input"
+                                placeholder="Tạo mật khẩu mới..."
+                                required
+                            >
+                            <button type="button" class="btn-toggle-password" data-toggle-target="forgotNewPasswordInput" title="Hiện/Ẩn mật khẩu">
+                                <i class="fa-regular fa-eye"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Xác nhận mật khẩu mới -->
+                    <div class="mb-3">
+                        <label class="form-label auth-label">Xác nhận mật khẩu mới</label>
+                        <div class="auth-input-icon-wrap password-wrap">
+                            <i class="fa-solid fa-shield-halved input-icon"></i>
+                            <input
+                                type="password"
+                                id="forgotConfirmNewPasswordInput"
+                                class="form-control auth-input"
+                                placeholder="Nhập lại mật khẩu mới..."
+                                required
+                            >
+                            <button type="button" class="btn-toggle-password" data-toggle-target="forgotConfirmNewPasswordInput" title="Hiện/Ẩn mật khẩu">
+                                <i class="fa-regular fa-eye"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn-cs-primary w-100">
+                        <i class="fa-solid fa-check me-1"></i> Đặt lại mật khẩu & Đăng nhập
+                    </button>
+                </form>
+
+                <div class="auth-switch-footer mt-3">
+                    <a href="#" id="linkBackToLoginFromForgot" class="fw-semibold">
+                        <i class="fa-solid fa-arrow-left me-1"></i> Quay lại Đăng nhập
+                    </a>
+                </div>
+            </div>
+
+            <!-- CHỌN NHANH TÀI KHOẢN MẪU ĐỂ TEST ĐA TAB -->
             <div class="auth-quick-accounts mt-3 pt-3 border-top text-start">
-                <div class="small text-secondary mb-2">Chọn nhanh tài khoản để test đa tab:</div>
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                    <span class="small text-secondary fw-semibold">Tài khoản mẫu (click chuyển nhanh để test đa tab):</span>
+                </div>
                 <div class="d-flex flex-wrap gap-1" id="savedAccountsList"></div>
             </div>
         </div>
