@@ -47,10 +47,10 @@
 
             <!-- TAB ĐIỀU HƯỚNG CHÍNH: CHỈ 2 PHẦN ĐĂNG NHẬP & ĐĂNG KÝ (QUÊN MẬT KHẨU TÍCH HỢP BÉ Ở DƯỚI) -->
             <div class="auth-main-tabs" role="tablist">
-                <button type="button" class="auth-tab-btn active" data-auth-tab="login">
+                <button type="button" class="auth-tab-btn active" id="tabBtnLogin" data-auth-tab="login" onclick="setAuthTab('login')">
                     <i class="fa-solid fa-right-to-bracket me-1"></i> Đăng nhập
                 </button>
-                <button type="button" class="auth-tab-btn" data-auth-tab="register">
+                <button type="button" class="auth-tab-btn" id="tabBtnRegister" data-auth-tab="register" onclick="setAuthTab('register')">
                     <i class="fa-solid fa-user-plus me-1"></i> Đăng ký
                 </button>
             </div>
@@ -61,7 +61,7 @@
                     Đăng nhập bằng tài khoản Gmail đã đăng ký để tiếp tục trò chuyện
                 </div>
 
-                <form id="loginForm" class="auth-form text-start" autocomplete="on">
+                <form id="loginForm" class="auth-form text-start" autocomplete="on" novalidate>
                     <!-- Nhập Gmail -->
                     <div class="mb-3" id="loginEmailGroup">
                         <label class="form-label auth-label">Địa chỉ Gmail</label>
@@ -82,7 +82,7 @@
                     <div class="mb-2">
                         <div class="d-flex justify-content-between align-items-center mb-1">
                             <label class="form-label auth-label mb-0">Mật khẩu</label>
-                            <button type="button" class="btn-link-xs p-0 text-decoration-none auth-forgot-link" id="btnGoToForgot">
+                            <button type="button" class="btn-link-xs p-0 text-decoration-none auth-forgot-link" id="btnGoToForgot" onclick="setAuthTab('forgot')">
                                 <i class="fa-regular fa-circle-question me-1"></i>Quên mật khẩu?
                             </button>
                         </div>
@@ -124,8 +124,8 @@
                 </div>
 
                 <div class="auth-switch-footer mt-3 d-flex justify-content-between align-items-center">
-                    <span>Chưa có tài khoản? <a href="#" id="linkGoToRegister" class="fw-semibold">Đăng ký ngay</a></span>
-                    <a href="#" id="linkGoToForgot" class="small text-muted text-decoration-none">Quên mật khẩu?</a>
+                    <span>Chưa có tài khoản? <a href="javascript:void(0)" id="linkGoToRegister" onclick="setAuthTab('register')" class="fw-semibold">Đăng ký ngay</a></span>
+                    <a href="javascript:void(0)" id="linkGoToForgot" onclick="setAuthTab('forgot')" class="small text-muted text-decoration-none">Quên mật khẩu?</a>
                 </div>
             </div>
 
@@ -135,7 +135,7 @@
                     Đăng ký tài khoản mới bằng Gmail và nhận mã OTP xác thực
                 </div>
 
-                <form id="registerForm" class="auth-form text-start" autocomplete="on">
+                <form id="registerForm" class="auth-form text-start" autocomplete="on" novalidate>
                     <!-- Họ và tên -->
                     <div class="mb-2">
                         <label class="form-label auth-label">Họ và tên hiển thị</label>
@@ -217,7 +217,7 @@
                                     required
                                 >
                             </div>
-                            <button type="button" id="btnSendRegOtp" class="btn btn-cs-otp text-nowrap px-3">
+                            <button type="button" id="btnSendRegOtp" onclick="handleSendRegOtp()" class="btn btn-cs-otp text-nowrap px-3">
                                 <i class="fa-regular fa-paper-plane me-1"></i> Gửi mã OTP
                             </button>
                         </div>
@@ -232,7 +232,7 @@
                 </form>
 
                 <div class="auth-switch-footer mt-3">
-                    Đã có tài khoản? <a href="#" id="linkGoToLogin" class="fw-semibold">Đăng nhập ngay</a>
+                    Đã có tài khoản? <a href="javascript:void(0)" id="linkGoToLogin" onclick="setAuthTab('login')" class="fw-semibold">Đăng nhập ngay</a>
                 </div>
             </div>
 
@@ -242,7 +242,7 @@
                     Nhập địa chỉ Gmail để nhận mã OTP đặt lại mật khẩu mới
                 </div>
 
-                <form id="forgotForm" class="auth-form text-start" autocomplete="off">
+                <form id="forgotForm" class="auth-form text-start" autocomplete="off" novalidate>
                     <!-- Nhập Gmail khôi phục -->
                     <div class="mb-2" id="forgotEmailGroup">
                         <label class="form-label auth-label">Địa chỉ Gmail đã đăng ký</label>
@@ -273,7 +273,7 @@
                                     required
                                 >
                             </div>
-                            <button type="button" id="btnSendForgotOtp" class="btn btn-cs-otp text-nowrap px-3">
+                            <button type="button" id="btnSendForgotOtp" onclick="handleSendForgotOtp()" class="btn btn-cs-otp text-nowrap px-3">
                                 <i class="fa-regular fa-paper-plane me-1"></i> Nhận mã OTP
                             </button>
                         </div>
@@ -324,7 +324,7 @@
                 </form>
 
                 <div class="auth-switch-footer mt-3">
-                    <a href="#" id="linkBackToLoginFromForgot" class="fw-semibold">
+                    <a href="javascript:void(0)" id="linkBackToLoginFromForgot" onclick="setAuthTab('login')" class="fw-semibold">
                         <i class="fa-solid fa-arrow-left me-1"></i> Quay lại Đăng nhập
                     </a>
                 </div>

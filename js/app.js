@@ -258,7 +258,50 @@ function setAuthTab(tabName) {
     if (viewLogin) viewLogin.classList.toggle('d-none', tabName !== 'login');
     if (viewReg) viewReg.classList.toggle('d-none', tabName !== 'register');
     if (viewForgot) viewForgot.classList.toggle('d-none', tabName !== 'forgot');
+
+    if (tabName === 'register') {
+        setTimeout(() => document.getElementById('regNameInput')?.focus(), 50);
+    } else if (tabName === 'login') {
+        setTimeout(() => document.getElementById('loginEmailInput')?.focus(), 50);
+    } else if (tabName === 'forgot') {
+        setTimeout(() => document.getElementById('forgotEmailInput')?.focus(), 50);
+    }
 }
+window.setAuthTab = setAuthTab;
+
+function handleSendRegOtp() {
+    const emailVal = document.getElementById('regEmailInput')?.value.trim();
+    if (!emailVal || !emailVal.includes('@')) {
+        setAuthAlert('Vui lòng nhập địa chỉ Gmail hợp lệ trước khi gửi mã OTP!', 'danger');
+        showToast('Vui lòng nhập địa chỉ Gmail hợp lệ!', 'fa-circle-exclamation');
+        document.getElementById('regEmailInput')?.focus();
+        return;
+    }
+    sendAuthOtp(
+        emailVal,
+        'REGISTER',
+        document.getElementById('btnSendRegOtp'),
+        document.getElementById('regOtpHint')
+    );
+}
+window.handleSendRegOtp = handleSendRegOtp;
+
+function handleSendForgotOtp() {
+    const emailVal = document.getElementById('forgotEmailInput')?.value.trim();
+    if (!emailVal || !emailVal.includes('@')) {
+        setAuthAlert('Vui lòng nhập địa chỉ Gmail đã đăng ký trước khi gửi mã OTP!', 'danger');
+        showToast('Vui lòng nhập địa chỉ Gmail đã đăng ký!', 'fa-circle-exclamation');
+        document.getElementById('forgotEmailInput')?.focus();
+        return;
+    }
+    sendAuthOtp(
+        emailVal,
+        'FORGOT_PASSWORD',
+        document.getElementById('btnSendForgotOtp'),
+        document.getElementById('forgotOtpHint')
+    );
+}
+window.handleSendForgotOtp = handleSendForgotOtp;
 
 function setLoginMethod(method) {
     currentLoginMethod = method;
@@ -2750,30 +2793,41 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!nameVal) {
             setAuthAlert('Vui lòng nhập họ và tên hiển thị!', 'danger');
             showToast('Vui lòng nhập họ và tên hiển thị!', 'fa-circle-exclamation');
+            document.getElementById('regNameInput')?.focus();
             return;
         }
 
         if (!emailVal || !emailVal.includes('@')) {
             setAuthAlert('Vui lòng nhập địa chỉ Gmail hợp lệ!', 'danger');
             showToast('Vui lòng nhập địa chỉ Gmail hợp lệ!', 'fa-circle-exclamation');
+            document.getElementById('regEmailInput')?.focus();
             return;
         }
 
         if (!passVal || passVal.length < 6) {
             setAuthAlert('Mật khẩu phải có ít nhất 6 ký tự!', 'danger');
             showToast('Mật khẩu phải có ít nhất 6 ký tự!', 'fa-circle-exclamation');
+            document.getElementById('regPasswordInput')?.focus();
             return;
         }
 
         if (passVal !== confirmPassVal) {
             setAuthAlert('Mật khẩu xác nhận không khớp! Vui lòng nhập lại.', 'danger');
             showToast('Mật khẩu xác nhận không khớp! Vui lòng nhập lại.', 'fa-circle-xmark');
+            document.getElementById('regConfirmPasswordInput')?.focus();
             return;
         }
 
-        if (!otpVal || otpVal.length < 6) {
-            setAuthAlert('Vui lòng nhập mã OTP gồm 6 số đã được gửi thẳng tới Gmail!', 'danger');
-            showToast('Vui lòng nhập mã OTP 6 số từ Gmail!', 'fa-circle-exclamation');
+        if (!otpVal) {
+            setAuthAlert('Vui lòng nhấn nút "Gửi mã OTP" bên trên để nhận mã xác thực qua Gmail và nhập 6 số vào ô mã xác minh!', 'danger');
+            showToast('Chưa nhập mã OTP xác thực Gmail!', 'fa-circle-exclamation');
+            document.getElementById('regOtpInput')?.focus();
+            return;
+        }
+
+        if (otpVal.length < 6) {
+            setAuthAlert('Mã OTP gồm đúng 6 chữ số, vui lòng kiểm tra hộp thư Gmail!', 'danger');
+            document.getElementById('regOtpInput')?.focus();
             return;
         }
 
