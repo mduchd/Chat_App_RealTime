@@ -1330,9 +1330,9 @@ body.dark-mode .auth-card::-webkit-scrollbar-thumb {
     border: none;
     background: transparent;
     color: var(--text-muted);
-    font-size: 0.82rem;
+    font-size: 0.88rem;
     font-weight: 600;
-    padding: 7px 6px;
+    padding: 9px 12px;
     border-radius: 9px;
     cursor: pointer;
     transition: all 0.15s ease;
@@ -1403,11 +1403,11 @@ body.dark-mode .auth-card::-webkit-scrollbar-thumb {
 
 .auth-input-icon-wrap .auth-input {
     width: 100%;
-    padding-left: 36px;
-    padding-right: 12px;
-    height: 38px;
-    font-size: 0.86rem;
-    border-radius: 9px;
+    padding-left: 14px;
+    padding-right: 14px;
+    height: 42px;
+    font-size: 0.88rem;
+    border-radius: 10px;
     border: 1px solid var(--border-light);
     background-color: var(--window-bg);
     color: var(--text-main);
@@ -1415,7 +1415,7 @@ body.dark-mode .auth-card::-webkit-scrollbar-thumb {
 }
 
 .auth-input-icon-wrap.password-wrap .auth-input {
-    padding-right: 36px;
+    padding-right: 42px;
 }
 
 .btn-toggle-password {
