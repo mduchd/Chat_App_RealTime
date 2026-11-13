@@ -96,9 +96,12 @@ function getBackendUrl() {
     if (window.BACKEND_API_URL) return window.BACKEND_API_URL.replace(/\/+$/, '');
     const stored = localStorage.getItem('BACKEND_API_URL');
     if (stored) return stored.replace(/\/+$/, '');
-    if (['localhost', '127.0.0.1'].includes(window.location.hostname)) {
+    // Khi chạy trên localhost:8080 (cùng port với Spring Boot), dùng relative path
+    if (['localhost', '127.0.0.1'].includes(window.location.hostname) && window.location.port === '8080') {
         return '';
     }
+    // Khi chạy qua Live Server (port 3000, 5500,...) hoặc deploy ngoài:
+    // Tự động kết nối tới Backend Railway
     return (window.BACKEND_URL_DEFAULT || 'https://chatapprealtime-production-ea7b4569.up.railway.app').replace(/\/+$/, '');
 }
 
