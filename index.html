@@ -563,6 +563,12 @@
                                     <button type="button" class="icon-btn d-none" id="btnHeaderAddMember" title="Thêm thành viên vào nhóm">
                                         <i class="fa-solid fa-user-plus"></i>
                                     </button>
+                                    <button type="button" class="icon-btn" id="btnAudioCall" title="Gọi thoại">
+                                        <i class="fa-solid fa-phone"></i>
+                                    </button>
+                                    <button type="button" class="icon-btn" id="btnVideoCall" title="Gọi video">
+                                        <i class="fa-solid fa-video"></i>
+                                    </button>
                                     <button type="button" class="icon-btn" id="btnToggleInfoDrawer" title="Tùy chọn & Thông tin hội thoại">
                                         <i class="fa-solid fa-ellipsis-vertical"></i>
                                     </button>
@@ -899,6 +905,25 @@
 
                 <!-- Danh sách hiển thị theo Tab đang chọn -->
                 <div id="friendsModalListContainer" class="friends-list-container"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- =====================================================================
+         5. MODAL CUỘC GỌI THOẠI / VIDEO
+         ===================================================================== -->
+    <div id="callModalBackdrop" class="custom-modal-backdrop d-none">
+        <div class="call-modal-card">
+            <div id="callAvatarWrap" class="mb-3"></div>
+            <h5 id="callPartnerName" class="fw-bold text-white mb-1">Tên người nhận</h5>
+            <p id="callStatusLabel" class="text-white-50 small mb-4">Đang kết nối cuộc gọi...</p>
+            <div class="d-flex justify-content-center gap-3">
+                <button type="button" class="call-control-btn" id="btnToggleCallMic" title="Tắt/Bật micro">
+                    <i class="fa-solid fa-microphone"></i>
+                </button>
+                <button type="button" class="call-control-btn end-call" id="btnEndCall" title="Kết thúc">
+                    <i class="fa-solid fa-phone-slash"></i>
+                </button>
             </div>
         </div>
     </div>
