@@ -15,66 +15,38 @@ const STORAGE_KEYS = {
     FRIENDSHIPS: 'chatspace_friendships_v2'
 };
 
-// Danh sách tài khoản thành viên mặc định khớp với mẫu thiết kế ChatSpace
-const DEFAULT_ACCOUNTS = [
-    {
-        id: 'user-duc',
-        name: 'Nguyễn Minh Đức',
-        shortName: 'Minh Đức',
-        initials: 'MĐ',
-        email: 'minhduchd20059b@gmail.com',
-        online: true,
-        avatar: 'https://ui-avatars.com/api/?name=Minh+Duc&background=1d72b8&color=fff&bold=true'
-    },
-    {
-        id: 'user-an',
-        name: 'An Nguyễn',
-        shortName: 'An Nguyễn',
-        initials: 'AN',
-        email: 'annguyen.hau@gmail.com',
-        online: true,
-        avatar: 'https://ui-avatars.com/api/?name=An+Nguyen&background=1d72b8&color=fff&bold=true'
-    },
-    {
-        id: 'user-minh',
-        name: 'Bình Minh',
-        shortName: 'Bình Minh',
-        initials: 'BM',
-        email: 'binhminh.ltm@gmail.com',
-        online: true,
-        avatar: 'https://ui-avatars.com/api/?name=Binh+Minh&background=64748b&color=fff&bold=true'
-    },
-    {
-        id: 'user-linh',
-        name: 'Quỳnh Linh',
-        shortName: 'Quỳnh Linh',
-        initials: 'QL',
-        email: 'quynhlinh.cntt@gmail.com',
-        online: true,
-        avatar: 'https://ui-avatars.com/api/?name=Quynh+Linh&background=64748b&color=fff&bold=true'
-    },
-    {
-        id: 'user-ha',
-        name: 'Trần Thu Hà',
-        shortName: 'Thu Hà',
-        initials: 'TH',
-        email: 'thuha.hau@gmail.com',
-        online: true,
-        avatar: 'https://ui-avatars.com/api/?name=Thu+Ha&background=0ea5e9&color=fff&bold=true'
-    },
-    {
-        id: 'user-nam',
-        name: 'Lê Hoàng Nam',
-        shortName: 'Hoàng Nam',
-        initials: 'HN',
-        email: 'hoangnam.dev@gmail.com',
-        online: false,
-        avatar: 'https://ui-avatars.com/api/?name=Hoang+Nam&background=64748b&color=fff&bold=true'
-    }
-];
+// Xóa dữ liệu mẫu của các phiên bản trước, giữ dữ liệu do người dùng tạo.
+const SAMPLE_USER_IDS = new Set(['user-duc', 'user-an', 'user-minh', 'user-linh', 'user-ha', 'user-nam']);
+const SAMPLE_CONVERSATION_IDS = new Set(['conv-an-nguyen', 'conv-binh-minh', 'room-lap-trinh-mang', 'conv-quynh-linh']);
+const SAMPLE_MESSAGE_IDS = new Set(['m-1', 'm-2', 'm-3', 'm-101', 'm-201', 'm-202', 'm-301']);
 
-// Khởi tạo người dùng của Tab hiện tại (cho phép mỗi Tab đăng nhập 1 người khác nhau)
-let CURRENT_USER = loadTabUser() || { ...DEFAULT_ACCOUNTS[0] };
+function removeOldSampleData() {
+    try {
+        const savedUser = JSON.parse(sessionStorage.getItem(STORAGE_KEYS.TAB_USER) || 'null');
+        if (savedUser && SAMPLE_USER_IDS.has(savedUser.id)) sessionStorage.removeItem(STORAGE_KEYS.TAB_USER);
+        const contacts = JSON.parse(localStorage.getItem(STORAGE_KEYS.CONTACTS) || 'null');
+        if (Array.isArray(contacts)) localStorage.setItem(STORAGE_KEYS.CONTACTS, JSON.stringify(contacts.filter(c => !SAMPLE_USER_IDS.has(c.id))));
+        const friendships = JSON.parse(localStorage.getItem(STORAGE_KEYS.FRIENDSHIPS) || 'null');
+        if (friendships && Array.isArray(friendships.accepted) && Array.isArray(friendships.requests)) {
+            friendships.accepted = friendships.accepted.filter(pair => !pair.some(id => SAMPLE_USER_IDS.has(id)));
+            friendships.requests = friendships.requests.filter(req => req.id !== 'freq-init-1');
+            localStorage.setItem(STORAGE_KEYS.FRIENDSHIPS, JSON.stringify(friendships));
+        }
+        for (const key of Object.keys(localStorage)) {
+            if (!key.startsWith(STORAGE_KEYS.CONVERSATIONS + ':')) continue;
+            const conversations = JSON.parse(localStorage.getItem(key) || 'null');
+            if (!Array.isArray(conversations)) continue;
+            const cleaned = conversations.map(conv => ({
+                ...conv,
+                messages: (conv.messages || []).filter(message => !SAMPLE_CONVERSATION_IDS.has(conv.id) || !SAMPLE_MESSAGE_IDS.has(message.id))
+            })).filter(conv => !SAMPLE_CONVERSATION_IDS.has(conv.id) || conv.messages.length > 0);
+            localStorage.setItem(key, JSON.stringify(cleaned));
+        }
+    } catch (_) { }
+}
+removeOldSampleData();
+
+let CURRENT_USER = loadTabUser() || { id: '', name: '', email: '' };
 
 const USER_SETTINGS = {
     activeStatus: true,
@@ -97,194 +69,8 @@ const QUICK_EMOJI_CYCLE = ['👍', '❤️', '🔥', '🎉', '🚀', '👏'];
 
 let CONTACTS_DIRECTORY = loadContactsDirectory();
 
-const NOTIFICATIONS = [
-    {
-        id: 'notif-1',
-        conversationId: 'conv-an-nguyen',
-        title: 'An Nguyễn',
-        content: 'Giờ kiểm thử chat nhóm và deploy nhé.',
-        time: '10:43',
-        unread: true
-    },
-    {
-        id: 'notif-2',
-        conversationId: 'room-lap-trinh-mang',
-        title: 'Nhóm Lập trình mạng',
-        content: 'Đã gửi bản demo lên hệ thống.',
-        time: '10:30',
-        unread: true
-    }
-];
-
-const INITIAL_CONVERSATIONS = [
-    {
-        id: 'conv-an-nguyen',
-        contactId: 'user-an',
-        participants: ['user-duc', 'user-an'],
-        name: 'An Nguyễn',
-        type: 'DIRECT',
-        roomId: null,
-        online: true,
-        statusText: 'Đang hoạt động',
-        unreadCount: 0,
-        pinned: false,
-        muted: false,
-        archived: false,
-        blocked: false,
-        themeColor: '#1d72b8',
-        quickEmoji: '👍',
-        avatarText: 'AN',
-        sharedFiles: [],
-        avatar: 'https://ui-avatars.com/api/?name=An+Nguyen&background=1d72b8&color=fff&bold=true',
-        messages: [
-            {
-                id: 'm-1',
-                senderId: 'user-an',
-                senderName: 'An Nguyễn',
-                content: 'Chào bạn, phần WebSocket chạy ổn rồi!',
-                timestamp: '2026-11-03T03:42:00.000Z',
-                displayTime: '10:42'
-            },
-            {
-                id: 'm-2',
-                senderId: 'user-duc',
-                senderName: 'Nguyễn Minh Đức',
-                content: 'Tuyệt! Mình đã đăng nhập bằng Google.',
-                timestamp: '2026-11-03T03:43:00.000Z',
-                displayTime: '10:43'
-            },
-            {
-                id: 'm-3',
-                senderId: 'user-an',
-                senderName: 'An Nguyễn',
-                content: 'Giờ kiểm thử chat nhóm và deploy nhé.',
-                timestamp: '2026-11-03T03:43:30.000Z',
-                displayTime: '10:43',
-                sidebarPreview: 'Mình nhận được rồi nhé'
-            }
-        ]
-    },
-    {
-        id: 'conv-binh-minh',
-        contactId: 'user-minh',
-        participants: ['user-duc', 'user-minh'],
-        name: 'Bình Minh',
-        type: 'DIRECT',
-        roomId: null,
-        online: true,
-        statusText: 'Đang hoạt động',
-        unreadCount: 0,
-        pinned: false,
-        muted: false,
-        archived: false,
-        blocked: false,
-        themeColor: '#1d72b8',
-        quickEmoji: '👍',
-        avatarText: 'BM',
-        sharedFiles: [],
-        avatar: 'https://ui-avatars.com/api/?name=Binh+Minh&background=64748b&color=fff&bold=true',
-        messages: [
-            {
-                id: 'm-101',
-                senderId: 'user-minh',
-                senderName: 'Bình Minh',
-                content: 'Cuộc họp nhóm lúc 20:00',
-                timestamp: '2026-11-03T02:15:00.000Z',
-                displayTime: '09:15'
-            }
-        ]
-    },
-    {
-        id: 'room-lap-trinh-mang',
-        name: 'Nhóm Lập trình mạng',
-        type: 'GROUP',
-        roomId: 'room-lap-trinh-mang',
-        online: true,
-        statusText: '4 thành viên • Đang hoạt động',
-        unreadCount: 0,
-        pinned: false,
-        muted: false,
-        archived: false,
-        blocked: false,
-        themeColor: '#1d72b8',
-        quickEmoji: '👍',
-        avatarText: 'GR',
-        sharedFiles: ['Bao_Cao_WebSocket_STOMP.pdf'],
-        members: [
-            { ...DEFAULT_ACCOUNTS[0], role: 'Trưởng nhóm' },
-            { ...DEFAULT_ACCOUNTS[1], role: 'Thành viên' },
-            { ...DEFAULT_ACCOUNTS[2], role: 'Thành viên' },
-            { ...DEFAULT_ACCOUNTS[3], role: 'Thành viên' }
-        ],
-        messages: [
-            {
-                id: 'm-201',
-                senderId: 'user-an',
-                senderName: 'An Nguyễn',
-                content: 'Mọi người kiểm tra kết nối STOMP /ws và kênh nhóm /topic/room/{roomId} nhé.',
-                timestamp: '2026-11-03T02:00:00.000Z',
-                displayTime: '09:00'
-            },
-            {
-                id: 'm-202',
-                senderId: 'user-minh',
-                senderName: 'Bình Minh',
-                content: 'Đã gửi bản demo',
-                timestamp: '2026-11-03T02:05:00.000Z',
-                displayTime: '09:05'
-            }
-        ]
-    },
-    {
-        id: 'conv-quynh-linh',
-        contactId: 'user-linh',
-        participants: ['user-duc', 'user-linh'],
-        name: 'Quỳnh Linh',
-        type: 'DIRECT',
-        roomId: null,
-        online: true,
-        statusText: 'Đang hoạt động',
-        unreadCount: 0,
-        pinned: false,
-        muted: false,
-        archived: false,
-        blocked: false,
-        themeColor: '#1d72b8',
-        quickEmoji: '❤️',
-        avatarText: 'QL',
-        sharedFiles: [],
-        avatar: 'https://ui-avatars.com/api/?name=Quynh+Linh&background=64748b&color=fff&bold=true',
-        messages: [
-            {
-                id: 'm-301',
-                senderId: 'user-linh',
-                senderName: 'Quỳnh Linh',
-                content: 'Cảm ơn bạn!',
-                timestamp: '2026-11-03T01:30:00.000Z',
-                displayTime: '08:30'
-            }
-        ]
-    }
-];
-
+const NOTIFICATIONS = [];
 let CONVERSATIONS = loadConversations();
-
-// Dữ liệu Kết bạn & Lời mời kết bạn mặc định giữa các tài khoản
-const INITIAL_FRIENDSHIPS = {
-    accepted: [
-        ['user-duc', 'user-an'],
-        ['user-duc', 'user-minh'],
-        ['user-duc', 'user-linh']
-    ],
-    requests: [
-        {
-            id: 'freq-init-1',
-            fromId: 'user-ha',
-            toId: 'user-duc',
-            createdAt: '2026-11-03T03:30:00.000Z'
-        }
-    ]
-};
 
 let FRIENDSHIPS = loadFriendships();
 let currentFriendsTab = 'discover';
@@ -302,6 +88,17 @@ let searchQuery = '';
 let inChatSearchQuery = '';
 let replyingToMessage = null;
 let typingTimeout = null;
+
+// Lấy URL Backend linh hoạt: Chạy local hoặc trỏ tới domain Backend deploy ngoài
+function getBackendUrl() {
+    if (window.BACKEND_API_URL) return window.BACKEND_API_URL.replace(/\/+$/, '');
+    const stored = localStorage.getItem('BACKEND_API_URL');
+    if (stored) return stored.replace(/\/+$/, '');
+    if (['localhost', '127.0.0.1'].includes(window.location.hostname)) {
+        return '';
+    }
+    return (window.BACKEND_URL_DEFAULT || '').replace(/\/+$/, '');
+}
 
 // Kênh đồng bộ thời gian thực giữa các Tab trình duyệt (Multi-Tab Realtime Bus)
 const realtimeBus =
@@ -336,9 +133,9 @@ function saveTabUser(userObj) {
 function loadContactsDirectory() {
     try {
         const raw = localStorage.getItem(STORAGE_KEYS.CONTACTS);
-        return raw ? JSON.parse(raw) : [...DEFAULT_ACCOUNTS];
+        return raw ? JSON.parse(raw) : [];
     } catch (_) {
-        return [...DEFAULT_ACCOUNTS];
+        return [];
     }
 }
 
@@ -356,8 +153,7 @@ function loadConversations() {
             if (Array.isArray(parsed)) return parsed;
         }
     } catch (_) { }
-    return JSON.parse(JSON.stringify(INITIAL_CONVERSATIONS.filter(conv =>
-        conv.type !== 'DIRECT' || conv.participants?.includes(CURRENT_USER.id))));
+    return [];
 }
 
 function conversationStorageKey() {
@@ -374,7 +170,7 @@ function loadFriendships() {
             }
         }
     } catch (_) {}
-    return JSON.parse(JSON.stringify(INITIAL_FRIENDSHIPS));
+    return { accepted: [], requests: [] };
 }
 
 function saveAndSyncFriendships(eventType = 'FRIENDS_UPDATED', extraData = {}) {
@@ -506,7 +302,8 @@ function connectWebSocket() {
     updateWsStatusUI('disconnected', 'Đang kết nối...');
 
     try {
-        const socket = new SockJS(`/ws-sockjs?user=${encodeURIComponent(CURRENT_USER.id)}`);
+        const backendBase = getBackendUrl();
+        const socket = new SockJS(`${backendBase}/ws-sockjs?user=${encodeURIComponent(CURRENT_USER.id)}`);
         const client = Stomp.over(socket);
         stompClient = client;
         client.debug = null;
@@ -730,7 +527,7 @@ function updateCurrentUserProfileUI() {
 
     const initials = getInitials(CURRENT_USER.name, CURRENT_USER.initials);
     if (topbarInitials) topbarInitials.textContent = initials;
-    if (sidebarUsername) sidebarUsername.textContent = CURRENT_USER.shortName || CURRENT_USER.name;
+    if (sidebarUsername) sidebarUsername.textContent = CURRENT_USER.shortName || CURRENT_USER.name || 'Đăng nhập';
     if (settingsInitials) settingsInitials.textContent = initials;
     if (settingsName) settingsName.textContent = CURRENT_USER.name;
     if (settingsEmail) settingsEmail.textContent = CURRENT_USER.email;
@@ -2640,6 +2437,30 @@ function renderFriendsModalList() {
     });
 }
 
+async function checkBackendAuth() {
+    try {
+        const res = await fetch('/api/me');
+        if (res.ok) {
+            const data = await res.json();
+            if (data && data.isAuthenticated && data.email) {
+                const userObj = {
+                    id: 'user-google-' + data.email.toLowerCase().replace(/[^a-z0-9]/g, ''),
+                    name: data.name || data.email,
+                    shortName: (data.name ? data.name.split(/\s+/).slice(-2).join(' ') : data.email),
+                    email: data.email,
+                    online: true,
+                    avatar: data.picture || `https://ui-avatars.com/api/?name=${encodeURIComponent(data.name || 'U')}&background=0095f6&color=fff&bold=true`
+                };
+                if (CURRENT_USER.email !== userObj.email || CURRENT_USER.name !== userObj.name) {
+                    loginAsUser(userObj);
+                }
+            }
+        }
+    } catch (err) {
+        console.warn('Could not check backend auth:', err);
+    }
+}
+
 // --------------------------------------------------------------------------
 // 10. KHỞI TẠO SỰ KIỆN KHI TRANG TẢI XONG
 // --------------------------------------------------------------------------
@@ -2654,7 +2475,10 @@ document.addEventListener('DOMContentLoaded', () => {
     renderBlockedUsersInSettings();
     selectConversation(activeConversationId);
 
-    connectWebSocket();
+    if (CURRENT_USER.id) connectWebSocket();
+    else document.getElementById('authScreen')?.classList.remove('d-none');
+
+    checkBackendAuth();
 
     // Sự kiện Modal Kết bạn & Danh bạ tài khoản
     document.getElementById('btnOpenFriendsModal')?.addEventListener('click', () => openFriendsModal('discover'));
@@ -2986,23 +2810,13 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btnHeaderSwitchAccount')?.addEventListener('click', openAuthScreen);
     document.getElementById('btnLogoutFromSettings')?.addEventListener('click', openAuthScreen);
     document.getElementById('btnCloseAuthScreen')?.addEventListener('click', () => {
-        authScreen.classList.add('d-none');
+        if (CURRENT_USER.id) authScreen.classList.add('d-none');
     });
     authScreen?.addEventListener('click', (e) => {
-        if (e.target === authScreen) authScreen.classList.add('d-none');
+        if (e.target === authScreen && CURRENT_USER.id) authScreen.classList.add('d-none');
     });
-    document.getElementById('btnGoogleOAuth')?.addEventListener('click', (e) => {
-        e.preventDefault();
-        const nameVal = document.getElementById('loginNameInput')?.value.trim() || CURRENT_USER.name;
-        const emailVal = document.getElementById('loginEmailInput')?.value.trim() || CURRENT_USER.email;
-        loginAsUser({
-            id: 'user-google-' + emailVal.toLowerCase().replace(/[^a-z0-9]/g, ''),
-            name: nameVal,
-            shortName: nameVal.split(/\s+/).slice(-2).join(' '),
-            email: emailVal,
-            online: true,
-            avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(nameVal)}&background=0095f6&color=fff&bold=true`
-        });
+    document.getElementById('btnGoogleOAuth')?.addEventListener('click', () => {
+        window.location.href = '/oauth2/authorization/google';
     });
 
     // Chọn Emoji

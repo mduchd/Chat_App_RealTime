@@ -5,3 +5,6 @@
 target
 realtime_chat/target
 *.log
+.vercel
+.idea
+.vscode

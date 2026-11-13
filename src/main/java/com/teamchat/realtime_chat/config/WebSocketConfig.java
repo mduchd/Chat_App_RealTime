@@ -50,8 +50,13 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
                 return () -> username;
             }
         };
-        registry.addEndpoint("/ws").setHandshakeHandler(handler);
-        registry.addEndpoint("/ws-sockjs").setHandshakeHandler(handler).withSockJS();
+        registry.addEndpoint("/ws")
+                .setHandshakeHandler(handler)
+                .setAllowedOriginPatterns("*");
+        registry.addEndpoint("/ws-sockjs")
+                .setHandshakeHandler(handler)
+                .setAllowedOriginPatterns("*")
+                .withSockJS();
     }
     //  Kiểm tra quyền và chặn đứng truy cập trái phép
     @Override

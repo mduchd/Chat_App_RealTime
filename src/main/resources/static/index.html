@@ -105,8 +105,8 @@
                 <div class="topbar-right">
                     <!-- Nút Tài khoản hiện tại (nhấn để đổi tài khoản test 2 tab) -->
                     <button type="button" class="topbar-user-btn" id="btnHeaderSwitchAccount" title="Đổi tài khoản người dùng">
-                        <span class="topbar-user-initials" id="topbarUserInitials">MĐ</span>
-                        <span id="sidebarCurrentUsername">Minh Đức</span>
+                        <span class="topbar-user-initials" id="topbarUserInitials">CS</span>
+                        <span id="sidebarCurrentUsername">Đăng nhập</span>
                         <i class="fa-solid fa-chevron-down" style="font-size: 0.65rem;"></i>
                     </button>
 
@@ -120,7 +120,7 @@
                     <div class="position-relative">
                         <button type="button" class="topbar-icon-btn" id="btnNotifications" title="Thông báo">
                             <i class="fa-regular fa-bell"></i>
-                            <span id="notificationBadge" class="topbar-badge">2</span>
+                            <span id="notificationBadge" class="topbar-badge d-none">0</span>
                         </button>
 
                         <div id="notificationPopover" class="notification-popover d-none">
@@ -234,7 +234,7 @@
 
                                 <div id="chatHeaderAvatarWrapper" class="d-none"></div>
 
-                                <h3 class="chat-partner-name text-truncate mb-0" id="chatHeaderName">An Nguyễn</h3>
+                                <h3 class="chat-partner-name text-truncate mb-0" id="chatHeaderName"></h3>
 
                                 <span id="chatHeaderBadge" class="badge-chat-type d-none">Cá nhân</span>
 
@@ -636,10 +636,10 @@
             <div class="custom-modal-body">
                 <div class="settings-profile-box justify-content-between">
                     <div class="d-flex align-items-center gap-3 min-w-0">
-                        <div class="conv-avatar-circle active-avatar" id="settingsUserInitials">MĐ</div>
+                        <div class="conv-avatar-circle active-avatar" id="settingsUserInitials">CS</div>
                         <div class="min-w-0">
-                            <div class="fw-semibold text-truncate" id="settingsUserName">Nguyễn Minh Đức</div>
-                            <div class="small text-secondary text-truncate" id="settingsUserEmail">minhduchd20059b@gmail.com</div>
+                            <div class="fw-semibold text-truncate" id="settingsUserName"></div>
+                            <div class="small text-secondary text-truncate" id="settingsUserEmail"></div>
                         </div>
                     </div>
                     <button type="button" class="btn-link-xs" id="btnLogoutFromSettings">
