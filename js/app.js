@@ -1989,34 +1989,6 @@ function showTypingIndicator(senderName) {
     }, 1800);
 }
 
-function startCallSession(type = 'AUDIO') {
-    const conv = getConversationById(activeConversationId);
-    if (!conv) return;
-
-    if (conv.blocked) {
-        showToast('Không thể thực hiện cuộc gọi vì bạn đã chặn tài khoản này.', 'fa-ban');
-        return;
-    }
-
-    const callModal = document.getElementById('callModalBackdrop');
-    const avatarWrap = document.getElementById('callAvatarWrap');
-    const partnerNameEl = document.getElementById('callPartnerName');
-    const statusLabel = document.getElementById('callStatusLabel');
-    const displayName = getDisplayConversationName(conv);
-    const displayAvatar = getDisplayConversationAvatar(conv);
-
-    avatarWrap.innerHTML =
-        conv.type === 'GROUP'
-            ? `<div class="conv-avatar-group mx-auto" style="width:80px;height:80px;font-size:1.5rem;">${escapeHtml(conv.avatarText || 'GR')}</div>`
-            : `<img src="${displayAvatar}" alt="${escapeHtml(displayName)}" class="conv-avatar" style="width:80px;height:80px;">`;
-
-    partnerNameEl.textContent = displayName;
-    statusLabel.textContent =
-        type === 'VIDEO' ? 'Đang gọi video trực tuyến...' : 'Đang đổ chuông gọi thoại...';
-
-    callModal.classList.remove('d-none');
-}
-
 // --------------------------------------------------------------------------
 // 9. TIỆN ÍCH HỖ TRỢ (TOAST, SOUND, HELPERS)
 // --------------------------------------------------------------------------
@@ -3014,19 +2986,6 @@ document.addEventListener('DOMContentLoaded', () => {
     btnToggleInfoDrawer.addEventListener('click', () => {
         chatInfoDrawer.classList.toggle('d-none');
         btnToggleInfoDrawer.classList.toggle('active');
-    });
-
-    // Gọi thoại & Gọi video
-    document.getElementById('btnAudioCall').addEventListener('click', () => startCallSession('AUDIO'));
-    document.getElementById('btnVideoCall').addEventListener('click', () => startCallSession('VIDEO'));
-    document.getElementById('btnEndCall').addEventListener('click', () => {
-        document.getElementById('callModalBackdrop').classList.add('d-none');
-        showToast('Đã kết thúc cuộc gọi', 'fa-phone-slash');
-    });
-    document.getElementById('btnToggleCallMic').addEventListener('click', (e) => {
-        const icon = e.currentTarget.querySelector('i');
-        icon.classList.toggle('fa-microphone');
-        icon.classList.toggle('fa-microphone-slash');
     });
 
     // Trung tâm Thông báo

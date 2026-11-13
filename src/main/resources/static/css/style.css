@@ -1269,7 +1269,7 @@ body.dark-mode .cs-composer-bar {
     margin-top: 2px;
 }
 
-/* Modals (Tạo nhóm, Cài đặt, Đăng nhập, Cuộc gọi) */
+/* Modals (Tạo nhóm, Cài đặt, Đăng nhập) */
 .custom-modal-backdrop,
 .auth-screen {
     position: fixed;
@@ -1652,30 +1652,6 @@ body.dark-mode .auth-card::-webkit-scrollbar-thumb {
     justify-content: space-between;
     padding: 6px 0;
     font-size: 0.82rem;
-}
-
-/* Modal Cuộc gọi */
-.call-modal-card {
-    width: 320px;
-    background: var(--topbar-bg);
-    padding: 28px 20px;
-    border-radius: 16px;
-    text-align: center;
-}
-
-.call-control-btn {
-    width: 46px;
-    height: 46px;
-    border-radius: 50%;
-    border: none;
-    background: rgba(255, 255, 255, 0.15);
-    color: #ffffff;
-    font-size: 1rem;
-    cursor: pointer;
-}
-
-.call-control-btn.end-call {
-    background: #ef4444;
 }
 
 /* Trạng thái trống */
