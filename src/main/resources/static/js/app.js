@@ -269,6 +269,35 @@ function setAuthTab(tabName) {
 }
 window.setAuthTab = setAuthTab;
 
+function openAuthScreen(tab = 'login', isLoggedOut = false) {
+    setAuthAlert('');
+    setAuthTab(tab);
+    const authScreen = document.getElementById('authScreen');
+    const closeBtn = document.getElementById('btnCloseAuthScreen');
+    if (closeBtn) {
+        closeBtn.classList.toggle('d-none', !CURRENT_USER.id || isLoggedOut);
+    }
+    if (CURRENT_USER.email && !isLoggedOut) {
+        const loginEmail = document.getElementById('loginEmailInput');
+        if (loginEmail) loginEmail.value = CURRENT_USER.email;
+    } else {
+        const loginEmail = document.getElementById('loginEmailInput');
+        if (loginEmail) loginEmail.value = '';
+        const loginPass = document.getElementById('loginPasswordInput');
+        if (loginPass) loginPass.value = '';
+    }
+
+    authScreen?.classList.remove('d-none');
+}
+window.openAuthScreen = openAuthScreen;
+
+function closeAuthScreen() {
+    if (CURRENT_USER.id) {
+        document.getElementById('authScreen')?.classList.add('d-none');
+    }
+}
+window.closeAuthScreen = closeAuthScreen;
+
 function handleSendRegOtp() {
     const emailVal = document.getElementById('regEmailInput')?.value.trim();
     if (!emailVal || !emailVal.includes('@')) {
@@ -2574,6 +2603,9 @@ async function checkBackendAuth() {
                 };
                 if (CURRENT_USER.id !== userObj.id || CURRENT_USER.email !== userObj.email || CURRENT_USER.name !== userObj.name) {
                     loginAsUser(userObj, true);
+                } else {
+                    document.getElementById('authScreen')?.classList.add('d-none');
+                    document.getElementById('btnCloseAuthScreen')?.classList.remove('d-none');
                 }
                 await refreshFriends();
                 if (!friendRefreshTimer) friendRefreshTimer = setInterval(refreshFriends, 15000);
@@ -3207,25 +3239,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Mở màn hình Đăng nhập / Đổi tài khoản
     const authScreen = document.getElementById('authScreen');
-    const openAuthScreen = (tab = 'login', isLoggedOut = false) => {
-        setAuthAlert('');
-        setAuthTab(tab);
-        const closeBtn = document.getElementById('btnCloseAuthScreen');
-        if (closeBtn) {
-            closeBtn.classList.toggle('d-none', !CURRENT_USER.id || isLoggedOut);
-        }
-        if (CURRENT_USER.email && !isLoggedOut) {
-            const loginEmail = document.getElementById('loginEmailInput');
-            if (loginEmail) loginEmail.value = CURRENT_USER.email;
-        } else {
-            const loginEmail = document.getElementById('loginEmailInput');
-            if (loginEmail) loginEmail.value = '';
-            const loginPass = document.getElementById('loginPasswordInput');
-            if (loginPass) loginPass.value = '';
-        }
-
-        authScreen?.classList.remove('d-none');
-    };
     document.getElementById('btnSwitchAccount')?.addEventListener('click', () => openAuthScreen('login', false));
     document.getElementById('btnHeaderSwitchAccount')?.addEventListener('click', () => openAuthScreen('login', false));
     document.getElementById('btnLogoutFromSettings')?.addEventListener('click', () => logoutCurrentUser());
