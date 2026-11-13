@@ -45,6 +45,12 @@
             <artifactId>spring-boot-starter-websocket</artifactId>
         </dependency>
 
+        <!-- Spring Mail: Gửi email OTP qua SMTP Gmail -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-mail</artifactId>
+        </dependency>
+
 <!-- 1. Spring Security: Khung bảo mật core -->
 <dependency>
     <groupId>org.springframework.boot</groupId>

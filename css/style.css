@@ -1487,6 +1487,96 @@ body.dark-mode .auth-card::-webkit-scrollbar-thumb {
     margin-bottom: 18px;
 }
 
+.auth-view-desc {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    line-height: 1.45;
+}
+
+.auth-hint-text {
+    color: var(--text-muted);
+    font-size: 0.76rem;
+    text-align: left;
+    line-height: 1.4;
+}
+
+/* Thông báo lỗi / thành công trên Form đăng nhập */
+.auth-alert-banner {
+    display: flex;
+    align-items: center;
+    padding: 10px 14px;
+    border-radius: 10px;
+    font-size: 0.82rem;
+    font-weight: 500;
+    line-height: 1.4;
+    text-align: left;
+    margin-bottom: 14px;
+}
+
+.auth-alert-banner.alert-danger {
+    background-color: #fef2f2;
+    border: 1px solid #fecaca;
+    color: #b91c1c;
+}
+
+.auth-alert-banner.alert-success {
+    background-color: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    color: #15803d;
+}
+
+.auth-alert-banner.alert-info {
+    background-color: #f0f9ff;
+    border: 1px solid #bae6fd;
+    color: #0369a1;
+}
+
+body.dark-mode .auth-alert-banner.alert-danger {
+    background-color: rgba(239, 68, 68, 0.15);
+    border-color: rgba(239, 68, 68, 0.3);
+    color: #fca5a5;
+}
+
+body.dark-mode .auth-alert-banner.alert-success {
+    background-color: rgba(34, 197, 94, 0.15);
+    border-color: rgba(34, 197, 94, 0.3);
+    color: #86efac;
+}
+
+body.dark-mode .auth-alert-banner.alert-info {
+    background-color: rgba(14, 165, 233, 0.15);
+    border-color: rgba(14, 165, 233, 0.3);
+    color: #7dd3fc;
+}
+
+/* Nút gửi mã OTP */
+.btn-cs-otp {
+    border: 1px solid var(--theme-color);
+    background-color: rgba(29, 114, 184, 0.08);
+    color: var(--theme-color);
+    font-size: 0.82rem;
+    font-weight: 600;
+    border-radius: 9px;
+    transition: all 0.15s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+.btn-cs-otp:hover:not(:disabled) {
+    background-color: var(--theme-color);
+    color: #ffffff;
+}
+
+.btn-cs-otp:disabled {
+    opacity: 0.65;
+    cursor: not-allowed;
+    border-color: var(--border-light);
+    color: var(--text-muted);
+    background-color: var(--sidebar-card-bg);
+}
+
 .btn-cs-primary {
     border: none;
     background: var(--theme-color);
