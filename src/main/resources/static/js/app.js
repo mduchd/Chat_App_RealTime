@@ -96,6 +96,12 @@ function getBackendUrl() {
     if (window.BACKEND_API_URL) return window.BACKEND_API_URL.replace(/\/+$/, '');
     const stored = localStorage.getItem('BACKEND_API_URL');
     if (stored) return stored.replace(/\/+$/, '');
+
+    const isFileProtocol = window.location.protocol === 'file:' || window.location.origin === 'null';
+    if (isFileProtocol) {
+        return (window.BACKEND_URL_DEFAULT || 'https://chatapprealtime-production-ea7b4569.up.railway.app').replace(/\/+$/, '');
+    }
+
     // Khi chạy trên localhost:8080 (cùng port với Spring Boot), dùng relative path
     if (['localhost', '127.0.0.1'].includes(window.location.hostname) && window.location.port === '8080') {
         return '';
@@ -103,6 +109,12 @@ function getBackendUrl() {
     // Khi chạy qua Live Server (port 3000, 5500,...) hoặc deploy ngoài:
     // Tự động kết nối tới Backend Railway
     return (window.BACKEND_URL_DEFAULT || 'https://chatapprealtime-production-ea7b4569.up.railway.app').replace(/\/+$/, '');
+}
+
+function buildBackendUrl(pathname) {
+    const base = getBackendUrl();
+    if (!base) return new URL(pathname, window.location.origin).toString();
+    return new URL(pathname, `${base}/`).toString();
 }
 
 // Kênh đồng bộ thời gian thực giữa các Tab trình duyệt (Multi-Tab Realtime Bus)
@@ -263,7 +275,7 @@ function setAuthTab(tabName) {
     if (viewForgot) viewForgot.classList.toggle('d-none', tabName !== 'forgot');
 
     if (tabName === 'register') {
-        setTimeout(() => document.getElementById('regNameInput')?.focus(), 50);
+        setTimeout(() => document.getElementById('regPhoneInput')?.focus(), 50);
     } else if (tabName === 'login') {
         setTimeout(() => document.getElementById('loginEmailInput')?.focus(), 50);
     } else if (tabName === 'forgot') {
@@ -2818,17 +2830,17 @@ document.addEventListener('DOMContentLoaded', () => {
     registerForm?.addEventListener('submit', async (e) => {
         e.preventDefault();
         setAuthAlert('');
-        const nameVal = document.getElementById('regNameInput')?.value.trim();
+        const phoneVal = document.getElementById('regPhoneInput')?.value.trim();
         const emailVal = document.getElementById('regEmailInput')?.value.trim();
         const passVal = document.getElementById('regPasswordInput')?.value;
         const confirmPassVal = document.getElementById('regConfirmPasswordInput')?.value;
         const otpVal = document.getElementById('regOtpInput')?.value.trim();
         const submitBtn = document.getElementById('btnRegSubmit');
 
-        if (!nameVal) {
-            setAuthAlert('Vui lòng nhập họ và tên hiển thị!', 'danger');
-            showToast('Vui lòng nhập họ và tên hiển thị!', 'fa-circle-exclamation');
-            document.getElementById('regNameInput')?.focus();
+        if (!phoneVal) {
+            setAuthAlert('Vui lòng nhập số điện thoại!', 'danger');
+            showToast('Vui lòng nhập số điện thoại!', 'fa-circle-exclamation');
+            document.getElementById('regPhoneInput')?.focus();
             return;
         }
 
@@ -2877,7 +2889,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    name: nameVal,
+                    phone: phoneVal,
                     email: emailVal,
                     password: passVal,
                     otp: otpVal
@@ -3256,7 +3268,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     document.getElementById('btnGoogleOAuth')?.addEventListener('click', (event) => {
         event.preventDefault();
-        window.location.href = `${getBackendUrl()}/oauth2/authorization/google`;
+        window.location.href = buildBackendUrl('/oauth2/authorization/google');
     });
 
     // Chọn Emoji

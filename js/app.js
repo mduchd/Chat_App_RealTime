@@ -96,6 +96,12 @@ function getBackendUrl() {
     if (window.BACKEND_API_URL) return window.BACKEND_API_URL.replace(/\/+$/, '');
     const stored = localStorage.getItem('BACKEND_API_URL');
     if (stored) return stored.replace(/\/+$/, '');
+
+    const isFileProtocol = window.location.protocol === 'file:' || window.location.origin === 'null';
+    if (isFileProtocol) {
+        return (window.BACKEND_URL_DEFAULT || 'https://chatapprealtime-production-ea7b4569.up.railway.app').replace(/\/+$/, '');
+    }
+
     // Khi chạy trên localhost:8080 (cùng port với Spring Boot), dùng relative path
     if (['localhost', '127.0.0.1'].includes(window.location.hostname) && window.location.port === '8080') {
         return '';
@@ -103,6 +109,12 @@ function getBackendUrl() {
     // Khi chạy qua Live Server (port 3000, 5500,...) hoặc deploy ngoài:
     // Tự động kết nối tới Backend Railway
     return (window.BACKEND_URL_DEFAULT || 'https://chatapprealtime-production-ea7b4569.up.railway.app').replace(/\/+$/, '');
+}
+
+function buildBackendUrl(pathname) {
+    const base = getBackendUrl();
+    if (!base) return new URL(pathname, window.location.origin).toString();
+    return new URL(pathname, `${base}/`).toString();
 }
 
 // Kênh đồng bộ thời gian thực giữa các Tab trình duyệt (Multi-Tab Realtime Bus)
@@ -3256,7 +3268,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     document.getElementById('btnGoogleOAuth')?.addEventListener('click', (event) => {
         event.preventDefault();
-        window.location.href = `${getBackendUrl()}/oauth2/authorization/google`;
+        window.location.href = buildBackendUrl('/oauth2/authorization/google');
     });
 
     // Chọn Emoji
