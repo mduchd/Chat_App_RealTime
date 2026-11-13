@@ -2610,6 +2610,10 @@ document.addEventListener('DOMContentLoaded', () => {
         e.preventDefault();
         setAuthTab('forgot');
     });
+    document.getElementById('linkGoToForgot')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        setAuthTab('forgot');
+    });
     document.getElementById('linkGoToRegister')?.addEventListener('click', (e) => {
         e.preventDefault();
         setAuthTab('register');
