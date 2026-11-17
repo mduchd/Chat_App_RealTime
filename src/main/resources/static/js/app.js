@@ -91,6 +91,11 @@ let serverAuthenticated = false;
 let friendRefreshTimer = null;
 let currentFriendsTab = 'discover';
 let friendSearchFilter = '';
+let discoverContacts = [];
+let discoverTimer = null;
+let discoverSequence = 0;
+let discoverLoading = false;
+let discoverError = false;
 
 // Biến quản lý trạng thái giao diện & STOMP
 let stompClient = null;
@@ -2408,7 +2413,7 @@ function updateFriendBadges() {
 }
 
 function openFriendsModal(defaultTab = 'discover') {
-    if (serverAuthenticated) refreshFriends();
+    if (serverAuthenticated) { refreshFriends(); scheduleFriendDiscovery(); }
     currentFriendsTab = defaultTab;
     document.querySelectorAll('[data-friends-tab]').forEach((btn) => {
         btn.classList.toggle('active', btn.getAttribute('data-friends-tab') === currentFriendsTab);
@@ -2420,6 +2425,8 @@ function openFriendsModal(defaultTab = 'discover') {
 
 function closeFriendsModal() {
     document.getElementById('friendsModalBackdrop')?.classList.add('d-none');
+    clearTimeout(discoverTimer);
+    discoverSequence++;
 }
 
 async function friendApi(path, options = {}) {
@@ -2470,6 +2477,7 @@ async function sendFriendRequest(targetUserId) {
     try {
         await friendApi('/requests', { method: 'POST', body: JSON.stringify({ userId: targetUserId }) });
         await refreshFriends();
+        scheduleFriendDiscovery();
         showToast('Đã gửi lời mời kết bạn.', 'fa-user-plus');
     } catch (error) { friendError(error); }
 }
@@ -2478,6 +2486,7 @@ async function acceptFriendRequest(requestId) {
     try {
         await friendApi(`/requests/${encodeURIComponent(requestId)}/accept`, { method: 'POST' });
         await refreshFriends();
+        scheduleFriendDiscovery();
         showToast('Đã chấp nhận lời mời kết bạn.', 'fa-user-check');
     } catch (error) { friendError(error); }
 }
@@ -2486,6 +2495,7 @@ async function cancelOrRejectFriendRequest(requestId) {
     try {
         await friendApi(`/requests/${encodeURIComponent(requestId)}`, { method: 'DELETE' });
         await refreshFriends();
+        scheduleFriendDiscovery();
         showToast('Đã hủy lời mời kết bạn.', 'fa-user-xmark');
     } catch (error) { friendError(error); }
 }
@@ -2494,31 +2504,45 @@ async function removeFriend(friendUserId) {
     try {
         await friendApi(`/${encodeURIComponent(friendUserId)}`, { method: 'DELETE' });
         await refreshFriends();
+        scheduleFriendDiscovery();
         showToast('Đã hủy kết bạn.', 'fa-user-minus');
     } catch (error) { friendError(error); }
 }
 
-async function handleQuickAddFriendByInput(event) {
-    event.preventDefault();
-    const input = document.getElementById('friendSearchOrEmailInput');
-    const email = (input?.value || '').trim();
-    if (!email.includes('@')) {
-        showToast('Nhập địa chỉ email chính xác của người muốn kết bạn.', 'fa-circle-exclamation');
-        return;
-    }
-    try {
-        const results = await (await friendApi(`/search?email=${encodeURIComponent(email)}`)).json();
-        if (!results.length) {
-            showToast('Không tìm thấy tài khoản. Người đó cần đăng nhập Google trước.', 'fa-circle-exclamation');
-            return;
+function scheduleFriendDiscovery(immediate = false) {
+    clearTimeout(discoverTimer);
+    const sequence = ++discoverSequence;
+    const query = friendSearchFilter;
+    discoverContacts = [];
+    discoverError = false;
+    discoverLoading = serverAuthenticated;
+    renderFriendsModalList();
+    if (!serverAuthenticated) return;
+    discoverTimer = setTimeout(async () => {
+        try {
+            const results = await (await friendApi(`/discover?q=${encodeURIComponent(query)}`)).json();
+            if (sequence !== discoverSequence || !serverAuthenticated) return;
+            discoverContacts = results;
+            const known = new Map(CONTACTS_DIRECTORY.map(c => [c.id, c]));
+            results.forEach(c => known.set(c.id, { ...c, avatar: c.avatar || '', online: false }));
+            CONTACTS_DIRECTORY = [...known.values()];
+        } catch (error) {
+            if (sequence !== discoverSequence) return;
+            discoverError = true;
         }
-        const contact = { ...results[0], avatar: results[0].avatar || '', online: false };
-        CONTACTS_DIRECTORY = CONTACTS_DIRECTORY.filter(c => c.id !== contact.id);
-        CONTACTS_DIRECTORY.push(contact);
-        input.value = '';
-        friendSearchFilter = '';
-        await sendFriendRequest(contact.id);
-    } catch (error) { friendError(error); }
+        if (sequence === discoverSequence) {
+            discoverLoading = false;
+            renderFriendsModalList();
+        }
+    }, immediate ? 0 : 250);
+}
+
+function handleQuickAddFriendByInput(event) {
+    event.preventDefault();
+    currentFriendsTab = 'discover';
+    document.querySelectorAll('[data-friends-tab]').forEach(btn =>
+        btn.classList.toggle('active', btn.getAttribute('data-friends-tab') === 'discover'));
+    scheduleFriendDiscovery(true);
 }
 
 function renderFriendsModalList() {
@@ -2529,13 +2553,11 @@ function renderFriendsModalList() {
         container.textContent = 'Hãy đăng nhập Google để sử dụng tính năng kết bạn.';
         return;
     }
-    const query = friendSearchFilter.toLowerCase();
     const related = new Set([...FRIENDSHIPS.accepted.flat(), ...FRIENDSHIPS.requests.flatMap(r => [r.fromId, r.toId])]);
     const otherAccounts = CONTACTS_DIRECTORY.filter((c) => {
         if (!related.has(c.id)) return false;
         if (c.id === CURRENT_USER.id) return false;
-        if (!query) return true;
-        return c.name.toLowerCase().includes(query) || c.email.toLowerCase().includes(query);
+        return true;
     });
 
     if (currentFriendsTab === 'requests') {
@@ -2630,16 +2652,15 @@ function renderFriendsModalList() {
             .join('');
     } else {
         // Tab 'discover' (Tìm tài khoản & Kết bạn)
-        if (otherAccounts.length === 0) {
-            container.innerHTML = `
-                <div class="text-center text-muted py-4 small">
-                    Nhập chính xác email Google của người muốn kết bạn ở ô phía trên.
-                </div>
-            `;
+        if (discoverLoading || discoverError || discoverContacts.length === 0) {
+            const message = discoverLoading ? 'Đang tìm tài khoản...' : discoverError
+                ? 'Không thể tải gợi ý. Hãy thử tìm lại.'
+                : friendSearchFilter ? 'Không tìm thấy tài khoản phù hợp.' : 'Chưa có gợi ý kết bạn.';
+            container.innerHTML = `<div class="text-center text-muted py-4 small">${message}</div>`;
             return;
         }
 
-        container.innerHTML = otherAccounts
+        container.innerHTML = `<div class="small text-muted mb-2">${friendSearchFilter ? 'Kết quả tìm kiếm' : 'Gợi ý kết bạn'}</div>` + discoverContacts
             .map((acc) => {
                 const initials = getInitials(acc.name, acc.initials);
                 const isFriend = areUsersFriends(CURRENT_USER.id, acc.id);
@@ -2861,7 +2882,10 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     document.getElementById('friendSearchOrEmailInput')?.addEventListener('input', (e) => {
         friendSearchFilter = e.target.value.trim();
-        renderFriendsModalList();
+        currentFriendsTab = 'discover';
+        document.querySelectorAll('[data-friends-tab]').forEach(btn =>
+            btn.classList.toggle('active', btn.getAttribute('data-friends-tab') === 'discover'));
+        scheduleFriendDiscovery();
     });
     document.getElementById('quickAddFriendForm')?.addEventListener('submit', handleQuickAddFriendByInput);
 

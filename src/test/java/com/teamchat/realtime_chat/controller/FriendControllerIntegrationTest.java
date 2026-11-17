@@ -39,6 +39,24 @@ class FriendControllerIntegrationTest {
     }
 
     @Test
+    void discoverFindsPartialNamesAndExcludesRelationshipsFromSuggestions() {
+        var alice = user("discover-alice");
+        user("discover-bob");
+        user("discover-carol");
+        jdbc.update("UPDATE users SET display_name=? WHERE google_sub=?", "Nguyễn Văn Bình", "discover-bob");
+        jdbc.update("UPDATE users SET display_name=? WHERE google_sub=?", "Trần Lan", "discover-carol");
+        assertEquals("discover-bob", friends.discover(alice, "nguyen van").get(0).id());
+        assertEquals("discover-bob", friends.discover(alice, "Bì").get(0).id());
+        assertEquals("discover-bob", friends.discover(alice, "discover-bob@example.com").get(0).id());
+        assertTrue(friends.discover(alice, "%").isEmpty());
+        assertTrue(friends.discover(alice, "").stream().anyMatch(c -> c.id().equals("discover-bob")));
+        friends.send(alice, new FriendController.SendRequest("discover-bob"));
+        assertTrue(friends.discover(alice, "").stream().noneMatch(c -> c.id().equals("discover-bob")));
+        assertEquals("discover-bob", friends.discover(alice, "Bình").get(0).id());
+        assertTrue(friends.discover(alice, "discover-alice@example.com").isEmpty());
+    }
+
+    @Test
     void requestsRequireRecipientAndBothUsersSeeTheFriendship() {
         var alice = user("test-alice");
         var bob = user("test-bob");

@@ -62,6 +62,31 @@ public class FriendController {
                 email.trim(), me);
     }
 
+    @GetMapping("/discover")
+    public List<Contact> discover(@AuthenticationPrincipal OAuth2User principal,
+                                  @RequestParam(defaultValue = "") String q) {
+        long me = currentId(principal);
+        String query = q.trim();
+        if (query.length() > 150) return List.of();
+        var mapper = (org.springframework.jdbc.core.RowMapper<Contact>) (rs, n) ->
+                new Contact(rs.getString(1), rs.getString(2), rs.getString(3), rs.getString(4));
+        if (query.isEmpty()) {
+            return jdbc.query("SELECT u.google_sub, u.display_name, u.email, u.avatar_url FROM users u "
+                    + "WHERE u.id<>? AND NOT EXISTS (SELECT 1 FROM friendships f "
+                    + "WHERE (f.user_low_id=? AND f.user_high_id=u.id) "
+                    + "OR (f.user_high_id=? AND f.user_low_id=u.id)) ORDER BY u.id DESC LIMIT 20",
+                    mapper, me, me, me);
+        }
+        if (query.contains("@")) {
+            return jdbc.query("SELECT google_sub, display_name, email, avatar_url FROM users "
+                    + "WHERE id<>? AND email=? LIMIT 20", mapper, me, query);
+        }
+        String pattern = "%" + query.replace("!", "!!").replace("%", "!%").replace("_", "!_") + "%";
+        return jdbc.query("SELECT google_sub, display_name, email, avatar_url FROM users "
+                + "WHERE id<>? AND display_name LIKE ? ESCAPE '!' ORDER BY display_name, id LIMIT 20",
+                mapper, me, pattern);
+    }
+
     @PostMapping("/requests")
     @ResponseStatus(HttpStatus.CREATED)
     public void send(@AuthenticationPrincipal OAuth2User principal, @RequestBody SendRequest request) {
