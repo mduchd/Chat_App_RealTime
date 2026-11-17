@@ -233,10 +233,11 @@ public class AuthController {
         establishSession(user, servletRequest, servletResponse);
 
         Map<String, Object> userData = new HashMap<>();
-        userData.put("id", user.getId().toString());
+        userData.put("id", user.getGoogleSub()==null ? user.getId().toString() : user.getGoogleSub());
         userData.put("name", user.getDisplayName());
         userData.put("email", user.getEmail());
         userData.put("avatar", user.getAvatarUrl());
+        userData.put("accountId",user.getId().toString());
 
         response.put("success", true);
         response.put("message", "Đăng nhập thành công! Chào mừng " + user.getDisplayName());

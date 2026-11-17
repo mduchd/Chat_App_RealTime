@@ -8,65 +8,12 @@
 // --------------------------------------------------------------------------
 // 1. TÀI KHOẢN NGƯỜI DÙNG, DANH BẠ & KHO LƯU TRỮ DỮ LIỆU
 // --------------------------------------------------------------------------
-const STORAGE_KEYS = {
-    TAB_USER: 'chatspace_tab_user_v2',
-    CONVERSATIONS: 'chatspace_conversations_v2',
-    CONTACTS: 'chatspace_contacts_v2',
-    FRIENDSHIPS: 'chatspace_friendships_v2',
-    NOTIFICATIONS: 'chatspace_notifications_v1'
-};
-
-// Xóa dữ liệu mẫu của các phiên bản trước, giữ dữ liệu do người dùng tạo.
-const SAMPLE_USER_IDS = new Set(['user-duc', 'user-an', 'user-minh', 'user-linh', 'user-ha', 'user-nam']);
-const SAMPLE_CONVERSATION_IDS = new Set(['conv-an-nguyen', 'conv-binh-minh', 'room-lap-trinh-mang', 'conv-quynh-linh']);
-const SAMPLE_MESSAGE_IDS = new Set(['m-1', 'm-2', 'm-3', 'm-101', 'm-201', 'm-202', 'm-301']);
-
-function removeOldSampleData() {
-    try {
-        const savedUser = JSON.parse(sessionStorage.getItem(STORAGE_KEYS.TAB_USER) || 'null');
-        if (savedUser && SAMPLE_USER_IDS.has(savedUser.id)) sessionStorage.removeItem(STORAGE_KEYS.TAB_USER);
-        const contacts = JSON.parse(localStorage.getItem(STORAGE_KEYS.CONTACTS) || 'null');
-        if (Array.isArray(contacts)) localStorage.setItem(STORAGE_KEYS.CONTACTS, JSON.stringify(contacts.filter(c => !SAMPLE_USER_IDS.has(c.id))));
-        const friendships = JSON.parse(localStorage.getItem(STORAGE_KEYS.FRIENDSHIPS) || 'null');
-        if (friendships && Array.isArray(friendships.accepted) && Array.isArray(friendships.requests)) {
-            friendships.accepted = friendships.accepted.filter(pair => !pair.some(id => SAMPLE_USER_IDS.has(id)));
-            friendships.requests = friendships.requests.filter(req => req.id !== 'freq-init-1');
-            localStorage.setItem(STORAGE_KEYS.FRIENDSHIPS, JSON.stringify(friendships));
-        }
-        for (const key of Object.keys(localStorage)) {
-            if (!key.startsWith(STORAGE_KEYS.CONVERSATIONS + ':')) continue;
-            const conversations = JSON.parse(localStorage.getItem(key) || 'null');
-            if (!Array.isArray(conversations)) continue;
-            const cleaned = conversations.map(conv => ({
-                ...conv,
-                messages: (conv.messages || []).filter(message => !SAMPLE_CONVERSATION_IDS.has(conv.id) || !SAMPLE_MESSAGE_IDS.has(message.id))
-            })).filter(conv => !SAMPLE_CONVERSATION_IDS.has(conv.id) || conv.messages.length > 0);
-            localStorage.setItem(key, JSON.stringify(cleaned));
-        }
-    } catch (_) { }
-}
-removeOldSampleData();
-
-let CURRENT_USER = loadTabUser() || { id: '', name: '', email: '' };
-
-function loadNotificationSettings() {
-    try { return JSON.parse(localStorage.getItem('chatspace_notification_settings_v1') || '{}'); }
-    catch (_) { return {}; }
-}
-
-const USER_SETTINGS = {
-    activeStatus: true,
-    darkMode: false,
-    desktopNotif: true,
-    soundNotif: true,
-    ...loadNotificationSettings()
-};
-
+// Durable data lives on the server. In-memory state is discarded on reload/logout.
+let CURRENT_USER = { id: '', name: '', email: '' };
+const DEFAULT_USER_SETTINGS = { activeStatus: true, darkMode: false, desktopNotif: true, soundNotif: true };
+const USER_SETTINGS = { ...DEFAULT_USER_SETTINGS };
 function saveNotificationSettings() {
-    localStorage.setItem('chatspace_notification_settings_v1', JSON.stringify({
-        desktopNotif: USER_SETTINGS.desktopNotif,
-        soundNotif: USER_SETTINGS.soundNotif
-    }));
+    return queueServerWrite({ settings: { ...USER_SETTINGS } });
 }
 
 const THEME_PRESETS = {
@@ -81,10 +28,10 @@ const THEME_PRESETS = {
 
 const QUICK_EMOJI_CYCLE = ['👍', '❤️', '🔥', '🎉', '🚀', '👏'];
 
-let CONTACTS_DIRECTORY = loadContactsDirectory();
+let CONTACTS_DIRECTORY = [];
 
-let NOTIFICATIONS = loadNotifications();
-let CONVERSATIONS = loadConversations();
+let NOTIFICATIONS = [];
+let CONVERSATIONS = [];
 
 let FRIENDSHIPS = { accepted: [], requests: [] };
 let serverAuthenticated = false;
@@ -116,8 +63,6 @@ function getBackendUrl() {
     if (['localhost', '127.0.0.1'].includes(window.location.hostname) && window.location.port === '8080') {
         return '';
     }
-    const stored = localStorage.getItem('BACKEND_API_URL');
-    if (stored) return stored.replace(/\/+$/, '');
 
     const isFileProtocol = window.location.protocol === 'file:' || window.location.origin === 'null';
     if (isFileProtocol) {
@@ -149,30 +94,6 @@ let memberSearchQuery = '';
 // --------------------------------------------------------------------------
 // 2. LƯU TRỮ & ĐỒNG BỘ THỜI GIAN THỰC ĐA TAB + WEBSOCKET STOMP `/ws`
 // --------------------------------------------------------------------------
-
-function loadTabUser() {
-    try {
-        const raw = sessionStorage.getItem(STORAGE_KEYS.TAB_USER);
-        return raw ? JSON.parse(raw) : null;
-    } catch (_) {
-        return null;
-    }
-}
-
-function saveTabUser(userObj) {
-    try {
-        sessionStorage.setItem(STORAGE_KEYS.TAB_USER, JSON.stringify(userObj));
-    } catch (_) { }
-}
-
-function loadContactsDirectory() {
-    try {
-        const raw = localStorage.getItem(STORAGE_KEYS.CONTACTS);
-        return raw ? JSON.parse(raw) : [];
-    } catch (_) {
-        return [];
-    }
-}
 
 // --------------------------------------------------------------------------
 // --------------------------------------------------------------------------
@@ -407,89 +328,176 @@ function setForgotMethod(method) {
     }
 }
 
-function saveContactsDirectory() {
-    try {
-        localStorage.setItem(STORAGE_KEYS.CONTACTS, JSON.stringify(CONTACTS_DIRECTORY));
-    } catch (_) { }
-}
+let serverHydrated = false;
+let localRevision = 0;
+let storageQueue = Promise.resolve();
+let serverShadow = new Map();
+let refreshInFlight = null;
+let statePollTimer = null;
 
-function loadConversations() {
-    try {
-        const raw = localStorage.getItem(conversationStorageKey());
-        if (raw) {
-            const parsed = JSON.parse(raw);
-            if (Array.isArray(parsed)) return parsed;
+async function chatApi(path, body) {
+    const response = await fetch(`${getBackendUrl()}/api/chat${path}`, {
+        method: body === undefined ? 'GET' : 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: body === undefined ? undefined : JSON.stringify(body),
+        signal: AbortSignal.timeout(20000)
+    });
+    if (!response.ok || response.redirected) {
+        if (response.status === 401 || response.status === 403 || response.redirected) {
+            throw new Error('Phiên đăng nhập hoặc quyền truy cập không hợp lệ. Vui lòng đăng nhập lại.');
         }
-    } catch (_) { }
-    return [];
+        throw new Error('Không lưu được dữ liệu lên server. Kiểm tra kết nối và thử lại.');
+    }
+    return response.status === 204 || response.headers.get('content-length') === '0' ? null
+        : await response.text().then(text => text ? JSON.parse(text) : null);
 }
 
-function conversationStorageKey() {
-    return `${STORAGE_KEYS.CONVERSATIONS}:${CURRENT_USER.id}`;
+function queueServerWrite(body) {
+    if (!serverAuthenticated || !serverHydrated) return Promise.resolve();
+    const owner = CURRENT_USER.id;
+    const captured = structuredClone(body);
+    localRevision++;
+    const operation = storageQueue.catch(() => {}).then(async () => {
+        if (CURRENT_USER.id !== owner) return;
+        await chatApi('/sync', captured);
+    });
+    storageQueue = operation;
+    operation.catch(error => showToast(error.message, 'fa-triangle-exclamation', 7000));
+    return operation;
 }
 
-function loadNotifications() {
-    if (!CURRENT_USER.id) return [];
-    try {
-        const items = JSON.parse(localStorage.getItem(`${STORAGE_KEYS.NOTIFICATIONS}:${CURRENT_USER.id}`) || '[]');
-        return Array.isArray(items) ? items : [];
-    } catch (_) { return []; }
+function renderServerState() {
+    renderConversationList(); renderNotifications(); renderBlockedUsersInSettings();
+    const active = getConversationById(activeConversationId);
+    if (active) { updateActiveChatHeaderAndDrawer(active); renderMessages(active); }
+    else if (activeConversationId) selectConversation(null);
+}
+
+async function refreshServerState() {
+    if (!serverAuthenticated || !CURRENT_USER.id) return;
+    if (refreshInFlight) return refreshInFlight;
+    const owner = CURRENT_USER.id;
+    const revision = localRevision;
+    refreshInFlight = (async () => {
+        await storageQueue.catch(() => {});
+        const data = await chatApi('/snapshot');
+        if (CURRENT_USER.id !== owner || revision !== localRevision) return false;
+        CONVERSATIONS = data.conversations.map(c => ({ pinned: false, muted: false, archived: false, blocked: false, themeColor: '#0084ff', quickEmoji: '👍', online: false, ...c }));
+        NOTIFICATIONS = data.notifications;
+        Object.assign(USER_SETTINGS, DEFAULT_USER_SETTINGS, data.settings);
+        serverShadow = new Map(CONVERSATIONS.map(c => [c.id, structuredClone(c)]));
+        for (const c of CONVERSATIONS) for (const member of c.members || []) {
+            if (!c.legacyReadOnly && !CONTACTS_DIRECTORY.some(p => p.id === member.id)) CONTACTS_DIRECTORY.push(member);
+        }
+        document.body.classList.toggle('dark-mode', !!USER_SETTINGS.darkMode);
+        for (const [id, value] of [['toggleDesktopNotif', USER_SETTINGS.desktopNotif], ['toggleSoundNotif', USER_SETTINGS.soundNotif],
+            ['toggleDarkMode', USER_SETTINGS.darkMode], ['toggleActiveStatus', USER_SETTINGS.activeStatus]]) {
+            const element = document.getElementById(id); if (element) element.checked = value;
+        }
+        serverHydrated = true;
+        renderServerState();
+        const active = getConversationById(activeConversationId);
+        if (active && !document.hidden && document.hasFocus() && active.unreadCount) {
+            active.unreadCount = 0;
+            NOTIFICATIONS.filter(n => n.conversationId === active.id).forEach(n => { n.unread = false; });
+            void persistAndSyncConversations(); void saveNotifications();
+        }
+    })();
+    try { return await refreshInFlight; } finally { refreshInFlight = null; }
 }
 
 function saveNotifications() {
-    if (!CURRENT_USER.id) return;
-    NOTIFICATIONS = NOTIFICATIONS.slice(0, 100);
-    try {
-        localStorage.setItem(`${STORAGE_KEYS.NOTIFICATIONS}:${CURRENT_USER.id}`, JSON.stringify(NOTIFICATIONS));
-    } catch (_) { }
+    return queueServerWrite({ notifications: NOTIFICATIONS.filter(n => !n.unread).map(n => ({ id: n.id, unread: false })) });
 }
-
-function loadFriendships() {
-    try {
-        const raw = localStorage.getItem(STORAGE_KEYS.FRIENDSHIPS);
-        if (raw) {
-            const parsed = JSON.parse(raw);
-            if (parsed && Array.isArray(parsed.accepted) && Array.isArray(parsed.requests)) {
-                return parsed;
+function saveContactsDirectory() { /* Contacts are resolved from authenticated server APIs. */ }
+function saveAndSyncFriendships() { return refreshFriends(); }
+function persistAndSyncConversations(eventType = 'SYNC_STATE') {
+    if (!serverHydrated || !serverAuthenticated) return Promise.resolve();
+    const captured = structuredClone(CONVERSATIONS);
+    const baseline = new Map(serverShadow);
+    localRevision++;
+    const owner = CURRENT_USER.id;
+    const operation = storageQueue.catch(() => {}).then(async () => {
+        if (CURRENT_USER.id !== owner) return;
+        const changes = [];
+        const fields = ['nickname', 'name', 'themeColor', 'quickEmoji', 'avatarText', 'topic', 'pinned', 'muted', 'archived', 'blocked', 'unreadCount', 'hidden'];
+        for (const conv of captured) {
+            const previous = baseline.get(conv.id);
+            const changedFields = {};
+            for (const field of fields) if (conv[field] !== undefined && JSON.stringify(conv[field]) !== JSON.stringify(previous?.[field])) changedFields[field] = conv[field];
+            if (changedFields.unreadCount === 0 && conv.messages?.length) changedFields.readThrough = conv.messages.at(-1).id;
+            const oldMessages = new Map((previous?.messages || []).map(m => [m.id, JSON.stringify(m)]));
+            const messages = conv.legacyReadOnly ? [] : (conv.messages || []).filter(m => oldMessages.get(m.id) !== JSON.stringify(m)
+                && (oldMessages.has(m.id) || m.senderId === CURRENT_USER.id));
+            const memberChanged = !conv.legacyReadOnly && JSON.stringify(conv.members) !== JSON.stringify(previous?.members);
+            if (!previous || Object.keys(changedFields).length || messages.length || memberChanged) {
+                const change = { id: conv.id, type: conv.type, name: conv.name, participants: conv.participants, fields: changedFields, messages };
+                if (memberChanged && conv.type === 'GROUP') change.members = conv.members;
+                changes.push(change);
             }
         }
-    } catch (_) {}
-    return { accepted: [], requests: [] };
+        for (const [id] of baseline) if (eventType === 'CONV_DELETED' && !captured.some(c => c.id === id)) changes.push({ id, fields: { hidden: true } });
+        if (changes.length) await chatApi('/sync', { conversations: changes });
+        serverShadow = new Map(captured.map(c => [c.id, c]));
+    });
+    storageQueue = operation;
+    operation.catch(async error => {
+        showToast(error.message, 'fa-triangle-exclamation', 7000);
+        await refreshServerState().catch(() => {});
+    });
+    return operation;
 }
 
-function saveAndSyncFriendships(eventType = 'FRIENDS_UPDATED', extraData = {}) {
-    try {
-        localStorage.setItem(STORAGE_KEYS.FRIENDSHIPS, JSON.stringify(FRIENDSHIPS));
-    } catch (_) {}
-
-    if (realtimeBus) {
-        realtimeBus.postMessage({
-            type: eventType,
-            senderTabUserId: CURRENT_USER.id,
-            ...extraData
-        });
-    }
+// Read old browser data once, upload an account-private archive, then remove only confirmed keys.
+async function importLegacyBrowserData() {
+    for (const legacyId of new Set([CURRENT_USER.id, CURRENT_USER.accountId].filter(Boolean))) await importLegacyBrowserAccount(legacyId);
 }
-
-function persistAndSyncConversations(eventType = 'SYNC_STATE', extraData = {}) {
-    try {
-        localStorage.setItem(conversationStorageKey(), JSON.stringify(CONVERSATIONS));
-    } catch (_) { }
-
-    if (realtimeBus) {
-        realtimeBus.postMessage({
-            type: eventType,
-            senderTabUserId: CURRENT_USER.id,
-            ...extraData
-        });
+async function importLegacyBrowserAccount(legacyId) {
+    const owner = CURRENT_USER.id;
+    const key = `chatspace_conversations_v2:${legacyId}`;
+    let raw;
+    try { raw = window.localStorage.getItem(key); } catch (_) { return; }
+    const notificationKey = `chatspace_notifications_v1:${legacyId}`;
+    const settingsKey = 'chatspace_notification_settings_v1';
+    if (!raw && !window.localStorage.getItem(notificationKey) && !window.localStorage.getItem(settingsKey)
+        && !window.localStorage.getItem('chatspace_contacts_v2')) {
+        try { window.sessionStorage.removeItem('chatspace_tab_user_v2'); } catch (_) { }
+        return;
     }
+    const conversations = JSON.parse(raw || '[]');
+    if (!Array.isArray(conversations)) throw new Error('Lịch sử cũ không hợp lệ');
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(owner + raw));
+    const hex = Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, '0')).join('');
+    const sourceId = `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20,32)}`;
+    const contacts = JSON.parse(window.localStorage.getItem('chatspace_contacts_v2') || '[]');
+    const notifications = JSON.parse(window.localStorage.getItem(notificationKey) || '[]');
+    const settings = JSON.parse(window.localStorage.getItem(settingsKey) || '{}');
+    const friendships = JSON.parse(window.localStorage.getItem('chatspace_friendships_v2') || '{}');
+    await chatApi('/import', { sourceId, conversations, contacts, notifications, settings, friendships });
+    if (CURRENT_USER.id !== owner) return;
+    // An older open tab may still be writing legacy history during the upload.
+    if (window.localStorage.getItem(key) !== raw) {
+        showToast('Lịch sử cũ vừa thay đổi ở tab khác. Hãy đóng tab cũ và tải lại để nhập phần còn lại.', 'fa-circle-info', 7000);
+        return;
+    }
+    // Never clear unrelated accounts or data before the server commits the import.
+    window.localStorage.removeItem(key);
+    window.localStorage.removeItem(notificationKey);
+    window.localStorage.removeItem(settingsKey);
+    try { window.sessionStorage.removeItem('chatspace_tab_user_v2'); } catch (_) { }
+    const remainingHistory = Object.keys(window.localStorage).some(k => k.startsWith('chatspace_conversations_v2:'));
+    if (!remainingHistory) {
+        window.localStorage.removeItem('chatspace_contacts_v2');
+        window.localStorage.removeItem('chatspace_friendships_v2');
+    }
+    showToast('Đã chuyển lịch sử cũ vào database. Xem trong Kho lưu trữ.', 'fa-database', 7000);
 }
 
 /**
  * Lắng nghe sự kiện thời gian thực từ các Tab trình duyệt khác
  */
 if (realtimeBus) {
-    realtimeBus.onmessage = (event) => {
+    realtimeBus.onmessage = async (event) => {
         const data = event.data;
         if (!data) return;
 
@@ -505,10 +513,8 @@ if (realtimeBus) {
         }
 
         // Đồng bộ lại danh sách cuộc trò chuyện, danh bạ và kết bạn từ Kho lưu trữ chung
-        CONVERSATIONS = loadConversations();
-        NOTIFICATIONS = loadNotifications();
-        renderNotifications();
-        if (!serverAuthenticated) CONTACTS_DIRECTORY = loadContactsDirectory();
+        if (data.senderTabUserId !== CURRENT_USER.id) return;
+        await refreshServerState().catch(error => console.warn(error));
 
         if (data.type === 'FRIEND_REQUEST_SENT' && data.toId === CURRENT_USER.id) {
             NOTIFICATIONS.unshift({
@@ -590,11 +596,12 @@ function connectWebSocket() {
                 if (client !== stompClient) { client.disconnect(); return; }
                 isWsConnected = true;
                 updateWsStatusUI('connected', 'Đã kết nối máy chủ • Trực tuyến');
+                void refreshServerState().catch(error => console.warn(error));
 
                 // 1. Đăng ký lắng nghe kênh nhận tin nhắn riêng `/user/queue/messages`
                 stompClient.subscribe('/user/queue/messages', function (messageFrame) {
                     const incomingMessage = JSON.parse(messageFrame.body);
-                    handleIncomingSocketMessage(incomingMessage);
+                    void handleIncomingSocketMessage(incomingMessage).catch(error => console.warn('Message refresh failed:', error));
                 });
 
                 // 2. Đăng ký lắng nghe kênh nhóm `/topic/room/{roomId}`
@@ -633,7 +640,7 @@ function subscribeToRoomTopic(roomId) {
     const destination = `/topic/room/${roomId}`;
     currentRoomSubscription = stompClient.subscribe(destination, function (messageFrame) {
         const incomingMessage = JSON.parse(messageFrame.body);
-        handleIncomingSocketMessage(incomingMessage);
+        void handleIncomingSocketMessage(incomingMessage).catch(error => console.warn('Message refresh failed:', error));
     });
 }
 
@@ -641,7 +648,7 @@ function subscribeToRoomTopic(roomId) {
  * Hàm gửi tin nhắn qua WebSocket STOMP tới `/app/chat.send`
  * kèm payload JSON gồm: { conversationId, content, timestamp }
  */
-function sendChatMessage(conversationId, content) {
+async function sendChatMessage(conversationId, content) {
     const trimmedContent = content.trim();
     if (!trimmedContent) {
         return;
@@ -655,19 +662,13 @@ function sendChatMessage(conversationId, content) {
         return false;
     }
 
-    if (conv.type === 'DIRECT') {
-        const recipient = conv.participants?.find(id => id !== CURRENT_USER.id);
-        if (!recipient) {
-            showToast('Không xác định được người nhận.', 'fa-triangle-exclamation');
-            return false;
-        }
-        if (!stompClient || !isWsConnected) {
-            showToast('Chưa kết nối máy chủ. Hãy thử lại sau.', 'fa-triangle-exclamation');
-            return false;
-        }
-        stompClient.send('/app/chat.private', {}, JSON.stringify({ recipient, content: trimmedContent }));
-        cancelReplyMessage();
-        return true;
+    if (!serverAuthenticated || !serverHydrated) {
+        showToast('Dữ liệu chưa tải xong hoặc phiên đăng nhập đã hết hạn.', 'fa-circle-exclamation');
+        return false;
+    }
+    if (conv.legacyReadOnly) {
+        showToast('Đây là lịch sử đã nhập. Hãy mở cuộc trò chuyện mới với tài khoản thật để tiếp tục.', 'fa-circle-info');
+        return false;
     }
 
     const payload = {
@@ -682,7 +683,7 @@ function sendChatMessage(conversationId, content) {
     // Gửi tới Backend Spring Boot qua STOMP nếu `/ws` đang mở
 
     const newMsg = {
-        id: 'msg-' + Date.now(),
+        id: crypto.randomUUID(),
         senderId: CURRENT_USER.id,
         senderName: CURRENT_USER.name,
         senderAvatar: CURRENT_USER.avatar,
@@ -697,9 +698,15 @@ function sendChatMessage(conversationId, content) {
     };
 
     cancelReplyMessage();
-    appendMessageToConversation(conversationId, newMsg, true);
-    syncComposerButtons();
-    return true;
+    appendMessageToConversation(conversationId, newMsg, false);
+    try {
+        await persistAndSyncConversations('NEW_MESSAGE');
+        return true;
+    } catch (_) {
+        conv.messages = conv.messages.filter(m => m.id !== newMsg.id);
+        renderConversationList(); renderMessages(conv);
+        return false;
+    } finally { syncComposerButtons(); }
 }
 
 /**
@@ -730,7 +737,7 @@ async function resolveConversationProfile(partnerId) {
                     conv.avatar = profile.avatar || '';
                 }
             }
-            localStorage.setItem(conversationStorageKey(), JSON.stringify(CONVERSATIONS));
+
             renderConversationList();
             const active = getConversationById(activeConversationId);
             if (active) updateActiveChatHeaderAndDrawer(active);
@@ -751,6 +758,14 @@ function resolveConversationProfiles() {
 }
 
 async function handleIncomingSocketMessage(payload) {
+    if (payload?.type === 'CHAT_UPDATED') {
+        const owner = CURRENT_USER.id;
+        if (await refreshServerState() === false) await refreshServerState();
+        if (CURRENT_USER.id !== owner) return;
+        const conv = getConversationById(payload.conversationId);
+        if (conv && payload.message?.id && payload.message.senderId !== owner) notifyIncomingMessage(conv, payload.message);
+        return;
+    }
     if (!payload || !payload.content) {
         return;
     }
@@ -890,9 +905,13 @@ function logoutCurrentUser() {
         method: 'POST', credentials: 'include'
     }).catch(() => {});
     clearTimeout(reconnectTimer);
-    sessionStorage.removeItem(STORAGE_KEYS.TAB_USER);
+
     CURRENT_USER = { id: '', name: '', email: '' };
     serverAuthenticated = false;
+    serverHydrated = false;
+    CONVERSATIONS = []; NOTIFICATIONS = []; CONTACTS_DIRECTORY = [];
+    serverShadow.clear();
+    Object.assign(USER_SETTINGS, DEFAULT_USER_SETTINGS);
     FRIENDSHIPS = { accepted: [], requests: [] };
     if (stompClient?.connected) {
         try { stompClient.disconnect(); } catch (_) {}
@@ -905,29 +924,35 @@ function logoutCurrentUser() {
     showToast('Đã đăng xuất khỏi tài khoản!', 'fa-right-from-bracket');
 }
 
-function loginAsUser(userObj, authenticatedByServer = false) {
+async function loginAsUser(userObj, authenticatedByServer = false) {
     if (!authenticatedByServer) {
         serverAuthenticated = false;
         FRIENDSHIPS = { accepted: [], requests: [] };
     }
     CURRENT_USER = {
         id: String(userObj.id),
+        accountId: userObj.accountId ? String(userObj.accountId) : '',
         name: userObj.name || userObj.displayName || 'Người dùng',
         shortName: userObj.shortName || (userObj.name ? userObj.name.split(/\s+/).slice(-2).join(' ') : 'Bạn'),
         email: userObj.email || '',
         phone: userObj.phone || '',
-        password: userObj.password || '',
         online: true,
         avatar: userObj.avatar || userObj.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(userObj.name || 'User')}&background=1d72b8&color=fff&bold=true`
     };
 
-    saveTabUser(CURRENT_USER);
+    serverAuthenticated = authenticatedByServer;
+    serverHydrated = false;
     document.getElementById('authScreen')?.classList.add('d-none');
     document.getElementById('btnCloseAuthScreen')?.classList.remove('d-none');
-    CONVERSATIONS = loadConversations();
-    NOTIFICATIONS = loadNotifications();
+    CONVERSATIONS = [];
+    NOTIFICATIONS = [];
+    await importLegacyBrowserData().catch(error => showToast('Chưa nhập được lịch sử cũ: ' + error.message, 'fa-triangle-exclamation', 7000));
+    await refreshServerState();
+    if (!statePollTimer) statePollTimer = setInterval(() => {
+        if (serverAuthenticated && !document.hidden) refreshServerState().catch(error => console.warn(error));
+    }, 10000);
     renderNotifications();
-    activeConversationId = CONVERSATIONS[0]?.id || null;
+    activeConversationId = CONVERSATIONS.find(c => !c.archived)?.id || null;
     connectWebSocket();
 
     // Đảm bảo tài khoản này có mặt trong CONTACTS_DIRECTORY chung
@@ -953,13 +978,7 @@ function loginAsUser(userObj, authenticatedByServer = false) {
     renderActiveNowStrip();
     renderConversationList();
 
-    const activeConv = getConversationById(activeConversationId);
-    if (activeConv) {
-        updateActiveChatHeaderAndDrawer(activeConv);
-        renderMessages(activeConv);
-    } else {
-        selectConversation(null);
-    }
+    selectConversation(activeConversationId);
 
     document.getElementById('settingsModalBackdrop')?.classList.add('d-none');
     showToast(`Xin chào, ${CURRENT_USER.name}!`, 'fa-circle-check');
@@ -974,7 +993,7 @@ function toggleMessageReaction(messageId, emoji) {
     if (!conv) return;
 
     const msg = conv.messages.find((m) => m.id === messageId);
-    if (!msg || msg.unsent) return;
+    if (!msg || msg.unsent || conv.legacyReadOnly) return;
 
     msg.reaction = msg.reaction === emoji ? null : emoji;
     persistAndSyncConversations('REACTION_UPDATED');
@@ -1006,7 +1025,7 @@ function unsendMessage(messageId) {
     if (!conv) return;
 
     const msg = conv.messages.find((m) => m.id === messageId);
-    if (!msg) return;
+    if (!msg || conv.legacyReadOnly || msg.senderId !== CURRENT_USER.id) return;
 
     msg.unsent = true;
     msg.content = `${msg.senderName} đã thu hồi một tin nhắn`;
@@ -1076,12 +1095,13 @@ function renameActiveConversation() {
             input.focus();
             return;
         }
-        conv.name = newName;
+        if (conv.type === 'GROUP') conv.name = newName;
+        else conv.nickname = newName;
         persistAndSyncConversations('RENAME_CONV');
         updateActiveChatHeaderAndDrawer(conv);
         renderConversationList();
         popup.close();
-        showToast(`Đã đổi tên thành "${conv.name}"`, 'fa-pen');
+        showToast(`Đã đổi tên thành "${newName}"`, 'fa-pen');
     };
     popup.showModal();
     input.focus();
@@ -1208,7 +1228,7 @@ function renderContactPickerList() {
             return `
             <div class="contact-picker-item ${isSelected ? 'selected' : ''}" data-pick-contact-id="${c.id}" data-already="${isAlreadyInGroup}">
                 <div class="d-flex align-items-center gap-2 min-w-0">
-                    <img src="${c.avatar}" alt="${escapeHtml(c.name)}" class="drawer-member-avatar">
+                    <img src="${escapeHtml(c.avatar)}" alt="${escapeHtml(c.name)}" class="drawer-member-avatar">
                     <div class="min-w-0">
                         <div class="drawer-member-name text-truncate">${escapeHtml(c.name)}</div>
                         <div class="drawer-member-role text-truncate">${escapeHtml(c.email)}</div>
@@ -1240,36 +1260,17 @@ function renderContactPickerList() {
     });
 }
 
-function addCustomContactFromInput() {
-    const searchMemberInput = document.getElementById('searchMemberInput');
-    const rawName = (searchMemberInput?.value || '').trim();
-    if (!rawName) {
-        showToast('Hãy gõ tên người muốn thêm vào ô tìm kiếm bạn bè trước nhé!', 'fa-user-plus');
-        searchMemberInput?.focus();
-        return;
-    }
-
-    const parts = rawName.split(/\s+/);
-    const shortName = parts.slice(-2).join(' ');
-    const newContact = {
-        id: 'user-' + Date.now(),
-        name: rawName,
-        shortName: shortName,
-        email: rawName.toLowerCase().replace(/\s+/g, '') + '@chatspace.vn',
-        online: true,
-        avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(rawName)}&background=0084ff&color=fff&bold=true`
-    };
-
-    CONTACTS_DIRECTORY.unshift(newContact);
-    saveContactsDirectory();
-    selectedMemberIds.add(newContact.id);
-    searchMemberInput.value = '';
-    memberSearchQuery = '';
-
-    renderActiveNowStrip();
-    renderSelectedMemberChips();
-    renderContactPickerList();
-    showToast(`Đã thêm "${rawName}" vào danh sách chọn`, 'fa-user-check');
+async function addCustomContactFromInput() {
+    const input = document.getElementById('searchMemberInput');
+    const query = input?.value.trim();
+    if (!query) return;
+    try {
+        const accounts = await (await friendApi('/discover?q=' + encodeURIComponent(query))).json();
+        for (const account of accounts) if (!CONTACTS_DIRECTORY.some(c => c.id === account.id)) CONTACTS_DIRECTORY.push(account);
+        if (accounts.length === 1) selectedMemberIds.add(accounts[0].id);
+        renderSelectedMemberChips(); renderContactPickerList();
+        if (!accounts.length) showToast('Không tìm thấy tài khoản đã đăng ký.', 'fa-circle-info');
+    } catch (error) { friendError(error); }
 }
 
 function handleGroupModalSubmit(event) {
@@ -1317,7 +1318,7 @@ function handleGroupModalSubmit(event) {
             .replace(/[\u0300-\u036f]/g, '')
             .replace(/[^a-z0-9]+/g, '-')
             .replace(/(^-|-$)/g, '');
-        const roomId = `room-${slug || Date.now()}`;
+        const roomId = `room-${crypto.randomUUID()}`;
 
         const membersList = [
             { ...CURRENT_USER, role: 'Trưởng nhóm' },
@@ -1453,6 +1454,7 @@ function toggleUnreadConversation(convId) {
         conv.unreadCount = 1;
         showToast(`Đã đánh dấu là chưa đọc`, 'fa-envelope');
     }
+    persistAndSyncConversations();
     renderConversationList();
     if (activeConversationId === convId) {
         updateActiveChatHeaderAndDrawer(conv);
@@ -1543,6 +1545,7 @@ function deleteConversation(convId) {
  */
 function getDisplayConversationName(conv) {
     if (!conv) return '';
+    if (conv.nickname) return conv.nickname;
     if (conv.type === 'GROUP') return conv.name;
     if (conv.participants && Array.isArray(conv.participants)) {
         const partnerId = conv.participants.find((id) => id !== CURRENT_USER.id);
@@ -1577,7 +1580,7 @@ function renderActiveNowStrip() {
         <div class="active-person-item" data-active-contact-id="${c.id}" title="Nhắn tin với ${escapeHtml(c.name)}">
             <div class="avatar-wrapper">
                 <div class="ig-story-ring">
-                    <img src="${c.avatar}" alt="${escapeHtml(c.name)}" class="active-person-avatar">
+                    <img src="${escapeHtml(c.avatar)}" alt="${escapeHtml(c.name)}" class="active-person-avatar">
                 </div>
                 <span class="status-dot online"></span>
             </div>
@@ -1635,6 +1638,8 @@ function openOrCreateDirectConversation(contactId) {
         persistAndSyncConversations('ARCHIVE_UPDATED');
     }
 
+    conv.hidden = false;
+    void persistAndSyncConversations();
     setConversationFilter('all');
     selectConversation(conv.id);
 }
@@ -1856,7 +1861,7 @@ function updateActiveChatHeaderAndDrawer(conv) {
     }
 
     document.getElementById('blockedBanner').classList.toggle('d-none', !conv.blocked);
-    document.getElementById('chatInputFooter').classList.toggle('d-none', conv.blocked);
+    document.getElementById('chatInputFooter').classList.toggle('d-none', conv.blocked || conv.legacyReadOnly);
 
     document.getElementById('drawerAvatar').innerHTML = avatarHtml;
     document.getElementById('drawerName').textContent = displayName;
@@ -1909,7 +1914,7 @@ function updateActiveChatHeaderAndDrawer(conv) {
                 (m) => `
             <div class="drawer-member-item">
                 <div class="d-flex align-items-center gap-2 min-w-0">
-                    <img src="${m.avatar}" alt="${escapeHtml(m.name)}" class="drawer-member-avatar">
+                    <img src="${escapeHtml(m.avatar)}" alt="${escapeHtml(m.name)}" class="drawer-member-avatar">
                     <div class="min-w-0">
                         <div class="drawer-member-name text-truncate">${escapeHtml(m.name)}</div>
                         <div class="drawer-member-role">${escapeHtml(m.role || 'Thành viên')}</div>
@@ -1986,7 +1991,7 @@ function renderMessages(conversation) {
                 : '';
 
             const imageHtml = msg.imageUrl
-                ? `<img src="${msg.imageUrl}" alt="Hình ảnh đính kèm" class="msg-attached-image">`
+                ? `<img src="${escapeHtml(msg.imageUrl)}" alt="Hình ảnh đính kèm" class="msg-attached-image">`
                 : '';
 
             const reactionHtml = msg.reaction
@@ -2063,6 +2068,9 @@ function renderMessages(conversation) {
 }
 
 function openContextMenu(convId, x, y) {
+    if (getConversationById(convId)?.legacyReadOnly) {
+        showToast('Đây là bản lưu lịch sử cũ trong database.', 'fa-database'); return;
+    }
     const conv = getConversationById(convId);
     if (!conv) return;
 
@@ -2202,10 +2210,6 @@ function appendMessageToConversation(conversationId, messageObj, broadcastToOthe
             conversationId: conversationId,
             message: messageObj
         });
-    } else {
-        try {
-            localStorage.setItem(conversationStorageKey(), JSON.stringify(CONVERSATIONS));
-        } catch (_) { }
     }
 
     renderConversationList();
@@ -2331,7 +2335,8 @@ async function deliverDesktopMessage(conv, message) {
         if (CURRENT_USER.id !== ownerId || conv.blocked || conv.muted || !USER_SETTINGS.desktopNotif) return false;
         if (activeConversationId === conv.id && !document.hidden && document.hasFocus()) return true;
         if (deliveredDesktopMessages.has(key)) return true;
-        try { if (localStorage.getItem(key)) return true; } catch (_) { }
+        const claim = await chatApi('/desktop', { key: message.id, action: 'claim' });
+        if (!claim.claimed) return true;
         const displayed = await showDesktopNotification(getDisplayConversationName(conv), {
             body: `${message.senderName || 'Người dùng'}: ${message.content || 'Đã gửi tệp đính kèm'}`,
             icon: new URL('logo.svg', window.location.href).href,
@@ -2341,17 +2346,8 @@ async function deliverDesktopMessage(conv, message) {
         if (displayed) {
             deliveredDesktopMessages.add(key);
             if (deliveredDesktopMessages.size > 500) deliveredDesktopMessages.delete(deliveredDesktopMessages.values().next().value);
-            try {
-                localStorage.setItem(key, String(Date.now()));
-                // Bound delivery records without affecting recent duplicate suppression.
-                for (let i = localStorage.length - 1; i >= 0; i--) {
-                    const storedKey = localStorage.key(i);
-                    if (storedKey?.startsWith('chatspace_desktop:') && Number(localStorage.getItem(storedKey)) < Date.now() - 86400000) {
-                        localStorage.removeItem(storedKey);
-                    }
-                }
-            } catch (_) { }
         }
+        await chatApi('/desktop', { key: message.id, action: displayed ? 'complete' : 'release' });
         return displayed;
     };
     // Serialize tabs so that persisting the inbox never suppresses desktop delivery.
@@ -2872,6 +2868,7 @@ async function checkBackendAuth() {
                 FRIENDSHIPS = { accepted: [], requests: [] };
                 const userObj = {
                     id: data.id,
+                    accountId: data.accountId,
                     name: data.name || data.email,
                     shortName: (data.name ? data.name.split(/\s+/).slice(-2).join(' ') : data.email),
                     email: data.email,
@@ -2879,7 +2876,7 @@ async function checkBackendAuth() {
                     avatar: data.picture || `https://ui-avatars.com/api/?name=${encodeURIComponent(data.name || 'U')}&background=0095f6&color=fff&bold=true`
                 };
                 if (CURRENT_USER.id !== userObj.id || CURRENT_USER.email !== userObj.email || CURRENT_USER.name !== userObj.name || CURRENT_USER.avatar !== userObj.avatar) {
-                    loginAsUser(userObj, true);
+                    await loginAsUser(userObj, true);
                 } else {
                     document.getElementById('authScreen')?.classList.add('d-none');
                     document.getElementById('btnCloseAuthScreen')?.classList.remove('d-none');
@@ -2889,7 +2886,7 @@ async function checkBackendAuth() {
                 resolveConversationProfiles();
                 if (!friendRefreshTimer) friendRefreshTimer = setInterval(refreshFriends, 15000);
             } else if (CURRENT_USER.id && !serverAuthenticated) {
-                sessionStorage.removeItem(STORAGE_KEYS.TAB_USER);
+
                 CURRENT_USER = { id: '', name: '', email: '' };
                 openAuthScreen('login', true);
                 updateWsStatusUI('disconnected', 'Vui lòng đăng nhập');
@@ -3149,7 +3146,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (response.ok && data.success && data.user) {
                 setAuthAlert('Đăng nhập thành công! Đang vào hệ thống...', 'success');
-                loginAsUser(data.user, true);
+                await loginAsUser(data.user, true);
             } else {
                 const errorMsg = data.message || 'Đăng nhập không thành công. Vui lòng kiểm tra lại!';
                 setAuthAlert(errorMsg, 'danger');
@@ -3230,7 +3227,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (response.ok && data.success && data.user) {
                 setAuthAlert('Đăng ký tài khoản thành công! Đang vào ChatSpace...', 'success');
-                loginAsUser(data.user, true);
+                await loginAsUser(data.user, true);
             } else {
                 const errorMsg = data.message || 'Đăng ký tài khoản không thành công!';
                 setAuthAlert(errorMsg, 'danger');
@@ -3335,12 +3332,17 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    messageForm.addEventListener('submit', (event) => {
+    let sendingMessage = false;
+    messageForm.addEventListener('submit', async (event) => {
         event.preventDefault();
         const content = messageInput.value;
         if (!content.trim()) return;
 
-        if (sendChatMessage(activeConversationId, content)) messageInput.value = '';
+        if (sendingMessage) return;
+        sendingMessage = true;
+        try {
+            if (await sendChatMessage(activeConversationId, content) && messageInput.value === content) messageInput.value = '';
+        } finally { sendingMessage = false; }
         syncComposerButtons();
         document.getElementById('emojiPickerPopover')?.classList.add('d-none');
     });
@@ -3349,7 +3351,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btnQuickReactionSend')?.addEventListener('click', () => {
         const conv = getConversationById(activeConversationId);
         if (!conv) return;
-        sendChatMessage(activeConversationId, '❤️');
+        void sendChatMessage(activeConversationId, '❤️');
     });
 
     // Hủy trả lời tin nhắn
@@ -3518,6 +3520,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const toggleDarkModeSwitch = document.getElementById('toggleDarkMode');
     const applyDarkMode = (enabled) => {
         USER_SETTINGS.darkMode = enabled;
+        saveNotificationSettings();
         document.body.classList.toggle('dark-mode', enabled);
         if (toggleDarkModeSwitch) toggleDarkModeSwitch.checked = enabled;
     };
@@ -3549,6 +3552,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('toggleActiveStatus').addEventListener('change', (e) => {
         USER_SETTINGS.activeStatus = e.target.checked;
+        saveNotificationSettings();
         document
             .getElementById('myActiveStatusDot')
             ?.classList.toggle('online', USER_SETTINGS.activeStatus);

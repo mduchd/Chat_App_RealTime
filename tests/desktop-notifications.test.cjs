@@ -7,6 +7,11 @@ const deliverySource = source.slice(source.indexOf('const deliveredDesktopMessag
 function sharedState() {
     const values = new Map(), queues = new Map();
     return {
+        claim: async(body) => {
+            if(body.action==='release'){values.delete(body.key);return {claimed:true};}
+            if(body.action==='complete'){values.set(body.key,true);return {claimed:true};}
+            if(values.has(body.key))return {claimed:false};values.set(body.key,false);return {claimed:true};
+        },
         storage: {getItem: k => values.get(k) || null, setItem: (k,v) => values.set(k,v), removeItem:k=>values.delete(k), key:i=>[...values.keys()][i],get length(){return values.size;}},
         locks: {async request(key, fn) { const before = queues.get(key) || Promise.resolve(); const result = before.then(fn); queues.set(key,result.catch(()=>{})); return result; }}
     };
@@ -17,7 +22,7 @@ function app(options={}, shared=sharedState()) {
         CURRENT_USER:{id:'me'}, activeConversationId:options.reading?'conv':'other',
         document:{hidden:options.hidden!==false,hasFocus:()=>!!options.focus},
         USER_SETTINGS:{desktopNotif:options.enabled!==false,soundNotif:true}, NOTIFICATIONS:options.inbox || [],
-        navigator:{locks:shared.locks}, localStorage:shared.storage,
+        navigator:{locks:shared.locks}, chatApi:async(path,body)=>shared.claim(body),
         window:{isSecureContext:true,location:{href:'https://chat.example/'},focus(){}},
         Notification:class {static permission=options.permission || 'granted'; constructor(title,opts){if(options.constructorFails)throw new TypeError('Unsupported');notices.push({title,...opts});} close(){}},
         saveNotifications(){},renderNotifications(){},getDisplayConversationName:()=> 'Lan',selectConversation(){},

@@ -40,6 +40,7 @@ public class UserController {
                         + "avatar_url = VALUES(avatar_url), last_login_at = CURRENT_TIMESTAMP(6)",
                         principal.getName(), email, name == null || name.isBlank() ? email : name, picture);
             }
+            userRepository.findByGoogleSub(principal.getName()).ifPresent(user -> userInfo.put("accountId",user.getId().toString()));
             userInfo.put("id", principal.getName());
             userInfo.put("name", principal.getAttribute("name"));
             userInfo.put("email", principal.getAttribute("email"));
@@ -49,7 +50,8 @@ public class UserController {
                 && !(authentication instanceof AnonymousAuthenticationToken)) {
             try {
                 userRepository.findById(Long.parseLong(authentication.getName())).ifPresent(user -> {
-                    userInfo.put("id", user.getId().toString());
+                    userInfo.put("id", user.getGoogleSub()==null ? user.getId().toString() : user.getGoogleSub());
+                    userInfo.put("accountId",user.getId().toString());
                     userInfo.put("name", user.getDisplayName());
                     userInfo.put("email", user.getEmail());
                     userInfo.put("picture", user.getAvatarUrl());

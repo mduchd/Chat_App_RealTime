@@ -11,7 +11,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.security.oauth2.core.user.OAuth2User;
+import java.security.Principal;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -23,12 +23,10 @@ class FriendControllerIntegrationTest {
     @Autowired JdbcTemplate jdbc;
     @Autowired MockMvc mvc;
 
-    private OAuth2User user(String sub) {
+    private Principal user(String sub) {
         jdbc.update("INSERT INTO users (google_sub, email, display_name) VALUES (?, ?, ?)",
                 sub, sub + "@example.com", sub);
-        OAuth2User principal = mock(OAuth2User.class);
-        when(principal.getName()).thenReturn(sub);
-        return principal;
+        return () -> sub;
     }
 
     @Test

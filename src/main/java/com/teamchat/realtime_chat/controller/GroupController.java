@@ -7,6 +7,8 @@ import com.teamchat.realtime_chat.dto.CreateGroupRequest;
 import com.teamchat.realtime_chat.service.ConversationService;
 
 import jakarta.validation.Valid;
+import com.teamchat.realtime_chat.security.AccountIdentity;
+import java.security.Principal;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -16,21 +18,22 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/groups")
 public class GroupController {
 
+    private final AccountIdentity identity;
     private final ConversationService conversationService;
 
-    public GroupController(ConversationService conversationService) {
+    public GroupController(ConversationService conversationService, AccountIdentity identity) {
+        this.identity=identity;
         this.conversationService = conversationService;
     }
 
     // Tạo nhóm chat
-    // creatorId tạm dùng để kiểm thử nội bộ
     @PostMapping
     public ResponseEntity<ConversationResponse> createGroup(
-            @RequestParam Long creatorId,
+            Principal principal,
             @Valid @RequestBody CreateGroupRequest request) {
 
         var conversation = conversationService.createGroup(
-                creatorId,
+                identity.id(principal),
                 request.groupName(),
                 request.memberIds()
         );
@@ -41,16 +44,15 @@ public class GroupController {
     }
 
     // Thêm thành viên vào nhóm
-    // requesterId tạm dùng để kiểm thử nội bộ
     @PostMapping("/{id}/members")
     public ResponseEntity<Void> addMember(
             @PathVariable Long id,
-            @RequestParam Long requesterId,
+            Principal principal,
             @Valid @RequestBody AddMemberRequest request) {
 
         conversationService.addMember(
                 id,
-                requesterId,
+                identity.id(principal),
                 request.userId()
         );
 

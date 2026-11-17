@@ -4,8 +4,9 @@ import java.util.List;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.oauth2.core.user.OAuth2User;
+import com.teamchat.realtime_chat.security.AccountIdentity;
+import java.security.Principal;
+
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -14,27 +15,23 @@ import org.springframework.web.server.ResponseStatusException;
 public class FriendController {
     private final JdbcTemplate jdbc;
 
-    public FriendController(JdbcTemplate jdbc) { this.jdbc = jdbc; }
+    private final AccountIdentity identity;
+    public FriendController(JdbcTemplate jdbc,AccountIdentity identity) { this.jdbc = jdbc; this.identity=identity; }
 
     record Contact(String id, String name, String email, String avatar) {}
     record Request(String id, String fromId, String toId) {}
     record Snapshot(List<Contact> contacts, List<List<String>> accepted, List<Request> requests) {}
     record SendRequest(String userId) {}
 
-    private long currentId(OAuth2User principal) {
-        if (principal == null) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
-        return jdbc.query("SELECT id FROM users WHERE google_sub = ?", rs -> {
-            if (!rs.next()) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Sign in again");
-            return rs.getLong(1);
-        }, principal.getName());
-    }
+    private long currentId(Principal principal) { return identity.id(principal); }
+    private String external(Principal principal) { return AccountIdentity.external(identity.user(principal)); }
 
     @GetMapping
-    public Snapshot list(@AuthenticationPrincipal OAuth2User principal) {
+    public Snapshot list(Principal principal) {
         long me = currentId(principal);
         var rows = jdbc.query("SELECT f.id, f.status, f.requester_id, "
-                + "lo.google_sub AS low_sub, hi.google_sub AS high_sub, "
-                + "other.google_sub AS other_sub, other.display_name, other.email, other.avatar_url "
+                + "COALESCE(lo.google_sub, CAST(lo.id AS CHAR)) AS low_sub, COALESCE(hi.google_sub, CAST(hi.id AS CHAR)) AS high_sub, "
+                + "COALESCE(other.google_sub, CAST(other.id AS CHAR)) AS other_sub, other.display_name, other.email, other.avatar_url "
                 + "FROM friendships f JOIN users lo ON lo.id=f.user_low_id "
                 + "JOIN users hi ON hi.id=f.user_high_id "
                 + "JOIN users other ON other.id=IF(f.user_low_id=?, f.user_high_id, f.user_low_id) "
@@ -47,23 +44,23 @@ public class FriendController {
         var accepted = rows.stream().filter(r -> "ACCEPTED".equals(r[1]))
                 .map(r -> List.of((String) r[3], (String) r[4])).toList();
         var requests = rows.stream().filter(r -> "PENDING".equals(r[1]))
-                .map(r -> new Request((String) r[0], ((Long) r[2]) == me ? principal.getName() : ((Contact) r[5]).id(),
-                        ((Long) r[2]) == me ? ((Contact) r[5]).id() : principal.getName())).toList();
+                .map(r -> new Request((String) r[0], ((Long) r[2]) == me ? external(principal) : ((Contact) r[5]).id(),
+                        ((Long) r[2]) == me ? ((Contact) r[5]).id() : external(principal))).toList();
         return new Snapshot(contacts, accepted, requests);
     }
 
     @GetMapping("/search")
-    public List<Contact> search(@AuthenticationPrincipal OAuth2User principal, @RequestParam String email) {
+    public List<Contact> search(Principal principal, @RequestParam String email) {
         long me = currentId(principal);
         if (email.isBlank() || email.length() > 255) return List.of();
-        return jdbc.query("SELECT google_sub, display_name, email, avatar_url FROM users "
+        return jdbc.query("SELECT COALESCE(google_sub, CAST(id AS CHAR)), display_name, email, avatar_url FROM users "
                         + "WHERE email = ? AND id <> ? LIMIT 1",
                 (rs, n) -> new Contact(rs.getString(1), rs.getString(2), rs.getString(3), rs.getString(4)),
                 email.trim(), me);
     }
 
     @GetMapping("/discover")
-    public List<Contact> discover(@AuthenticationPrincipal OAuth2User principal,
+    public List<Contact> discover(Principal principal,
                                   @RequestParam(defaultValue = "") String q) {
         long me = currentId(principal);
         String query = q.trim();
@@ -71,30 +68,28 @@ public class FriendController {
         var mapper = (org.springframework.jdbc.core.RowMapper<Contact>) (rs, n) ->
                 new Contact(rs.getString(1), rs.getString(2), rs.getString(3), rs.getString(4));
         if (query.isEmpty()) {
-            return jdbc.query("SELECT u.google_sub, u.display_name, u.email, u.avatar_url FROM users u "
+            return jdbc.query("SELECT COALESCE(u.google_sub, CAST(u.id AS CHAR)), u.display_name, u.email, u.avatar_url FROM users u "
                     + "WHERE u.id<>? AND NOT EXISTS (SELECT 1 FROM friendships f "
                     + "WHERE (f.user_low_id=? AND f.user_high_id=u.id) "
                     + "OR (f.user_high_id=? AND f.user_low_id=u.id)) ORDER BY u.id DESC LIMIT 20",
                     mapper, me, me, me);
         }
         if (query.contains("@")) {
-            return jdbc.query("SELECT google_sub, display_name, email, avatar_url FROM users "
+            return jdbc.query("SELECT COALESCE(google_sub, CAST(id AS CHAR)), display_name, email, avatar_url FROM users "
                     + "WHERE id<>? AND email=? LIMIT 20", mapper, me, query);
         }
         String pattern = "%" + query.replace("!", "!!").replace("%", "!%").replace("_", "!_") + "%";
-        return jdbc.query("SELECT google_sub, display_name, email, avatar_url FROM users "
+        return jdbc.query("SELECT COALESCE(google_sub, CAST(id AS CHAR)), display_name, email, avatar_url FROM users "
                 + "WHERE id<>? AND display_name LIKE ? ESCAPE '!' ORDER BY display_name, id LIMIT 20",
                 mapper, me, pattern);
     }
 
     @PostMapping("/requests")
     @ResponseStatus(HttpStatus.CREATED)
-    public void send(@AuthenticationPrincipal OAuth2User principal, @RequestBody SendRequest request) {
+    public void send(Principal principal, @RequestBody SendRequest request) {
         long me = currentId(principal);
         if (request == null || request.userId() == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
-        var ids = jdbc.query("SELECT id FROM users WHERE google_sub=?", (rs, n) -> rs.getLong(1), request.userId());
-        if (ids.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND);
-        long other = ids.get(0);
+        long other = identity.lookup(request.userId()).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND)).getId();
         if (other == me) throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
         try {
             jdbc.update("INSERT INTO friendships (user_low_id, user_high_id, requester_id) VALUES (?, ?, ?)",
@@ -105,7 +100,7 @@ public class FriendController {
     }
 
     @PostMapping("/requests/{id}/accept")
-    public void accept(@AuthenticationPrincipal OAuth2User principal, @PathVariable long id) {
+    public void accept(Principal principal, @PathVariable long id) {
         long me = currentId(principal);
         int count = jdbc.update("UPDATE friendships SET status='ACCEPTED' WHERE id=? AND status='PENDING' "
                 + "AND requester_id<>? AND (user_low_id=? OR user_high_id=?)", id, me, me, me);
@@ -113,7 +108,7 @@ public class FriendController {
     }
 
     @DeleteMapping("/requests/{id}")
-    public void cancel(@AuthenticationPrincipal OAuth2User principal, @PathVariable long id) {
+    public void cancel(Principal principal, @PathVariable long id) {
         long me = currentId(principal);
         int count = jdbc.update("DELETE FROM friendships WHERE id=? AND status='PENDING' "
                 + "AND (user_low_id=? OR user_high_id=?)", id, me, me);
@@ -121,12 +116,11 @@ public class FriendController {
     }
 
     @DeleteMapping("/{userId}")
-    public void remove(@AuthenticationPrincipal OAuth2User principal, @PathVariable String userId) {
+    public void remove(Principal principal, @PathVariable String userId) {
         long me = currentId(principal);
-        if (principal.getName().equals(userId)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
-        int count = jdbc.update("DELETE FROM friendships WHERE status='ACCEPTED' AND (user_low_id=? OR user_high_id=?) "
-                + "AND (user_low_id=(SELECT id FROM users WHERE google_sub=?) "
-                + "OR user_high_id=(SELECT id FROM users WHERE google_sub=?))", me, me, userId, userId);
+        long other=identity.lookup(userId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND)).getId();
+        if (other==me) throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
+        int count = jdbc.update("DELETE FROM friendships WHERE status='ACCEPTED' AND user_low_id=? AND user_high_id=?",Math.min(me,other),Math.max(me,other));
         if (count == 0) throw new ResponseStatusException(HttpStatus.NOT_FOUND);
     }
 }

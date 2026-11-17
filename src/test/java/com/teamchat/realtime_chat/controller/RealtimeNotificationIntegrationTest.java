@@ -24,6 +24,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class RealtimeNotificationIntegrationTest {
     @LocalServerPort int port;
     @Autowired UserRepository users;
+    @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
     @Autowired PasswordEncoder passwords;
 
     @Test
@@ -63,6 +64,7 @@ class RealtimeNotificationIntegrationTest {
                 recipientSocket.close();
             }
         } finally {
+            jdbc.update("DELETE FROM conversations WHERE created_by=?",sender.getId());
             users.delete(sender);
             users.delete(recipient);
         }
