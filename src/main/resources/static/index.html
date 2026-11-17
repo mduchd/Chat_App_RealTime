@@ -341,12 +341,21 @@
                 </div>
 
                 <div class="topbar-right">
-                    <!-- Nút Tài khoản hiện tại (nhấn để đổi tài khoản test 2 tab) -->
-                    <button type="button" class="topbar-user-btn" id="btnHeaderSwitchAccount" title="Đổi tài khoản người dùng">
-                        <span class="topbar-user-initials" id="topbarUserInitials">CS</span>
-                        <span id="sidebarCurrentUsername">Đăng nhập</span>
-                        <i class="fa-solid fa-chevron-down" style="font-size: 0.65rem;"></i>
-                    </button>
+                    <div class="account-menu-wrap" id="accountMenuWrap">
+                        <button type="button" class="topbar-user-btn" id="btnHeaderSwitchAccount" title="Tài khoản" aria-expanded="false" aria-controls="accountMenu">
+                            <span class="topbar-user-initials" id="topbarUserInitials">CS</span>
+                            <span id="sidebarCurrentUsername">Đăng nhập</span>
+                            <i class="fa-solid fa-chevron-down" style="font-size: 0.65rem;"></i>
+                        </button>
+                        <div class="account-menu d-none" id="accountMenu">
+                            <div class="account-menu-profile">
+                                <strong id="accountMenuName"></strong>
+                                <span id="accountMenuEmail"></span>
+                            </div>
+                            <button type="button" id="accountMenuSettings"><i class="fa-solid fa-gear"></i> Cài đặt</button>
+                            <button type="button" id="accountMenuLogout"><i class="fa-solid fa-right-from-bracket"></i> Đăng xuất</button>
+                        </div>
+                    </div>
 
                     <!-- Nút Kết bạn & Lời mời kết bạn -->
                     <button type="button" class="topbar-icon-btn" id="btnTopbarFriends" title="Kết bạn & Danh bạ">

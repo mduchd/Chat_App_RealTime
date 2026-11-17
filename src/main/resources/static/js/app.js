@@ -841,6 +841,10 @@ function updateCurrentUserProfileUI() {
 
     const initials = getInitials(CURRENT_USER.name, CURRENT_USER.initials);
     if (topbarInitials) topbarInitials.textContent = initials;
+    const menuName = document.getElementById('accountMenuName');
+    const menuEmail = document.getElementById('accountMenuEmail');
+    if (menuName) menuName.textContent = CURRENT_USER.name || 'Tài khoản';
+    if (menuEmail) menuEmail.textContent = CURRENT_USER.email || '';
     if (sidebarUsername) sidebarUsername.textContent = CURRENT_USER.shortName || CURRENT_USER.name || 'Đăng nhập';
     if (settingsInitials) settingsInitials.textContent = initials;
     if (settingsName) settingsName.textContent = CURRENT_USER.name;
@@ -3413,7 +3417,34 @@ document.addEventListener('DOMContentLoaded', () => {
     // Mở màn hình Đăng nhập / Đổi tài khoản
     const authScreen = document.getElementById('authScreen');
     document.getElementById('btnSwitchAccount')?.addEventListener('click', () => openAuthScreen('login', false));
-    document.getElementById('btnHeaderSwitchAccount')?.addEventListener('click', () => openAuthScreen('login', false));
+    const accountMenu = document.getElementById('accountMenu');
+    const accountButton = document.getElementById('btnHeaderSwitchAccount');
+    const closeAccountMenu = () => {
+        accountMenu.classList.add('d-none');
+        accountButton.setAttribute('aria-expanded', 'false');
+    };
+    accountButton.addEventListener('click', () => {
+        const opening = accountMenu.classList.contains('d-none');
+        accountMenu.classList.toggle('d-none', !opening);
+        accountButton.setAttribute('aria-expanded', String(opening));
+    });
+    document.getElementById('accountMenuSettings').addEventListener('click', () => {
+        closeAccountMenu();
+        document.getElementById('btnOpenSettings').click();
+    });
+    document.getElementById('accountMenuLogout').addEventListener('click', () => {
+        closeAccountMenu();
+        logoutCurrentUser();
+    });
+    document.addEventListener('click', (event) => {
+        if (!document.getElementById('accountMenuWrap').contains(event.target)) closeAccountMenu();
+    });
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && !accountMenu.classList.contains('d-none')) {
+            closeAccountMenu();
+            accountButton.focus();
+        }
+    });
     document.getElementById('btnLogoutFromSettings')?.addEventListener('click', () => logoutCurrentUser());
     document.getElementById('btnCloseAuthScreen')?.addEventListener('click', () => {
         if (CURRENT_USER.id) authScreen?.classList.add('d-none');

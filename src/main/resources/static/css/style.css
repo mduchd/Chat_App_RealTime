@@ -137,6 +137,27 @@ body {
     gap: 10px;
 }
 
+.account-menu-wrap { position: relative; }
+.account-menu {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    z-index: 1100;
+    width: 240px;
+    padding: 6px;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    background: #fff;
+    color: #1e293b;
+    box-shadow: 0 12px 32px rgba(15, 23, 42, .18);
+}
+.account-menu-profile { padding: 10px 12px; border-bottom: 1px solid #e2e8f0; }
+.account-menu-profile strong, .account-menu-profile span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.account-menu-profile span { margin-top: 3px; color: #64748b; font-size: .8rem; }
+.account-menu button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; border: 0; border-radius: 7px; background: transparent; color: inherit; text-align: left; }
+.account-menu button:hover, .account-menu button:focus-visible { background: #f1f5f9; }
+.account-menu button i { width: 16px; text-align: center; }
+
 .topbar-user-btn {
     background: rgba(255, 255, 255, 0.12);
     border: 1px solid rgba(255, 255, 255, 0.16);
