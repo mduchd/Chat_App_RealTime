@@ -3010,6 +3010,7 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const response = await fetch(`${getBackendUrl()}/api/auth/login`, {
                 method: 'POST',
+                credentials: 'include',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email: emailVal, password: passVal })
             });
@@ -3099,6 +3100,7 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const response = await fetch(`${getBackendUrl()}/api/auth/register`, {
                 method: 'POST',
+                credentials: 'include',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     phone: phoneVal,

@@ -7,7 +7,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
-import org.springframework.mock.web.MockHttpSession;
+import jakarta.servlet.http.Cookie;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -17,6 +17,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.junit.jupiter.api.Assertions.*;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -24,6 +25,12 @@ class AuthSessionIntegrationTest {
     @Autowired MockMvc mvc;
     @Autowired UserRepository users;
     @Autowired PasswordEncoder passwords;
+
+    @Test
+    void rejectsCrossSiteMutationFromUntrustedOrigin() throws Exception {
+        mvc.perform(post("/api/auth/logout").header("Origin", "https://untrusted.example"))
+                .andExpect(status().isForbidden());
+    }
 
     @Test
     void passwordLoginCreatesSessionForSubsequentRequests() throws Exception {
@@ -41,11 +48,23 @@ class AuthSessionIntegrationTest {
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.user.id").value(user.getId().toString()))
                     .andReturn();
-            MockHttpSession session = (MockHttpSession) login.getRequest().getSession(false);
-            mvc.perform(get("/api/me").session(session))
+            Cookie cookie = login.getResponse().getCookie("SESSION");
+            assertNotNull(cookie);
+            String setCookie = login.getResponse().getHeader("Set-Cookie");
+            assertNotNull(setCookie);
+            assertTrue(setCookie.contains("Max-Age=2592000"));
+            assertTrue(setCookie.contains("HttpOnly"));
+            assertTrue(setCookie.contains("Secure"));
+            assertTrue(setCookie.contains("SameSite=None"));
+            mvc.perform(get("/api/me").cookie(cookie))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.isAuthenticated").value(true))
                     .andExpect(jsonPath("$.id").value(user.getId().toString()));
+            mvc.perform(post("/api/auth/logout").cookie(cookie))
+                    .andExpect(status().isNoContent());
+            mvc.perform(get("/api/me").cookie(cookie))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.isAuthenticated").value(false));
         } finally {
             users.delete(user);
         }

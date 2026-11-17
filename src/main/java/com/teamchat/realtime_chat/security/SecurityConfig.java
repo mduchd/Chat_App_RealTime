@@ -20,6 +20,8 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import org.springframework.web.filter.OncePerRequestFilter;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.session.web.http.CookieSerializer;
+import org.springframework.session.web.http.DefaultCookieSerializer;
 
 @Configuration
 @EnableWebSecurity
@@ -29,16 +31,30 @@ public class SecurityConfig {
     private String frontendUrl;
 
     @Bean
+    public CookieSerializer cookieSerializer(
+            @Value("${chat.session.cookie-same-site}") String sameSite,
+            @Value("${chat.session.cookie-secure}") boolean secure) {
+        DefaultCookieSerializer serializer = new DefaultCookieSerializer();
+        serializer.setCookieName("SESSION");
+        serializer.setCookiePath("/");
+        serializer.setCookieMaxAge(30 * 24 * 60 * 60);
+        serializer.setSameSite(sameSite);
+        serializer.setUseSecureCookie(secure);
+        serializer.setUseHttpOnlyCookie(true);
+        return serializer;
+    }
+
+    @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
             .addFilterBefore(new OncePerRequestFilter() {
                 @Override
                 protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
                                                 FilterChain chain) throws ServletException, IOException {
-                    if (request.getRequestURI().startsWith("/api/friends")
+                    if (request.getRequestURI().startsWith("/api/")
                             && !Set.of("GET", "HEAD", "OPTIONS").contains(request.getMethod())) {
                         String origin = request.getHeader("Origin");
-                        if (origin == null || !(origin.equals("https://realtime-chat-six-sand.vercel.app")
+                        if (origin != null && !(origin.equals("https://realtime-chat-six-sand.vercel.app")
                                 || origin.equals("https://chatapprealtime-production-ea7b4569.up.railway.app")
                                 || origin.matches("http://(localhost|127\\.0\\.0\\.1)(:[0-9]+)?"))) {
                             response.sendError(403);
