@@ -8,7 +8,15 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.AuthorityUtils;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
+import jakarta.servlet.http.HttpSession;
 import org.springframework.web.bind.annotation.*;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -82,7 +90,8 @@ public class AuthController {
      * API Đăng ký tài khoản mới (phải có OTP gửi vào Gmail)
      */
     @PostMapping("/register")
-    public ResponseEntity<Map<String, Object>> register(@RequestBody Map<String, String> request) {
+    public ResponseEntity<Map<String, Object>> register(@RequestBody Map<String, String> request,
+            HttpServletRequest servletRequest, HttpServletResponse servletResponse) {
         Map<String, Object> response = new HashMap<>();
         String phone = request.get("phone");
         String email = request.get("email");
@@ -150,6 +159,7 @@ public class AuthController {
             newUser.setLastLoginAt(LocalDateTime.now());
 
             User savedUser = userRepository.save(newUser);
+            establishSession(savedUser, servletRequest, servletResponse);
 
             Map<String, Object> userData = new HashMap<>();
             userData.put("id", savedUser.getId().toString());
@@ -174,7 +184,8 @@ public class AuthController {
      * API Đăng nhập hệ thống (BẮT BUỘC ĐÃ ĐĂNG KÝ MỚI ĐƯỢC ĐĂNG NHẬP)
      */
     @PostMapping("/login")
-    public ResponseEntity<Map<String, Object>> login(@RequestBody Map<String, String> request) {
+    public ResponseEntity<Map<String, Object>> login(@RequestBody Map<String, String> request,
+            HttpServletRequest servletRequest, HttpServletResponse servletResponse) {
         Map<String, Object> response = new HashMap<>();
         String email = request.get("email");
         String password = request.get("password");
@@ -219,6 +230,7 @@ public class AuthController {
         // Cập nhật thời điểm đăng nhập gần nhất
         user.setLastLoginAt(LocalDateTime.now());
         userRepository.save(user);
+        establishSession(user, servletRequest, servletResponse);
 
         Map<String, Object> userData = new HashMap<>();
         userData.put("id", user.getId().toString());
@@ -230,6 +242,24 @@ public class AuthController {
         response.put("message", "Đăng nhập thành công! Chào mừng " + user.getDisplayName());
         response.put("user", userData);
         return ResponseEntity.ok(response);
+    }
+
+    private void establishSession(User user, HttpServletRequest request, HttpServletResponse response) {
+        request.getSession(true);
+        request.changeSessionId();
+        SecurityContext context = SecurityContextHolder.createEmptyContext();
+        context.setAuthentication(new UsernamePasswordAuthenticationToken(
+                user.getId().toString(), null, AuthorityUtils.createAuthorityList("ROLE_USER")));
+        SecurityContextHolder.setContext(context);
+        new HttpSessionSecurityContextRepository().saveContext(context, request, response);
+    }
+
+    @PostMapping("/logout")
+    public ResponseEntity<Void> logout(HttpServletRequest request) {
+        HttpSession session = request.getSession(false);
+        if (session != null) session.invalidate();
+        SecurityContextHolder.clearContext();
+        return ResponseEntity.noContent().build();
     }
 
     /**

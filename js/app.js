@@ -12,7 +12,8 @@ const STORAGE_KEYS = {
     TAB_USER: 'chatspace_tab_user_v2',
     CONVERSATIONS: 'chatspace_conversations_v2',
     CONTACTS: 'chatspace_contacts_v2',
-    FRIENDSHIPS: 'chatspace_friendships_v2'
+    FRIENDSHIPS: 'chatspace_friendships_v2',
+    NOTIFICATIONS: 'chatspace_notifications_v1'
 };
 
 // Xóa dữ liệu mẫu của các phiên bản trước, giữ dữ liệu do người dùng tạo.
@@ -48,12 +49,25 @@ removeOldSampleData();
 
 let CURRENT_USER = loadTabUser() || { id: '', name: '', email: '' };
 
+function loadNotificationSettings() {
+    try { return JSON.parse(localStorage.getItem('chatspace_notification_settings_v1') || '{}'); }
+    catch (_) { return {}; }
+}
+
 const USER_SETTINGS = {
     activeStatus: true,
     darkMode: false,
     desktopNotif: true,
-    soundNotif: true
+    soundNotif: true,
+    ...loadNotificationSettings()
 };
+
+function saveNotificationSettings() {
+    localStorage.setItem('chatspace_notification_settings_v1', JSON.stringify({
+        desktopNotif: USER_SETTINGS.desktopNotif,
+        soundNotif: USER_SETTINGS.soundNotif
+    }));
+}
 
 const THEME_PRESETS = {
     '#1d72b8': '#1d72b8',
@@ -69,7 +83,7 @@ const QUICK_EMOJI_CYCLE = ['👍', '❤️', '🔥', '🎉', '🚀', '👏'];
 
 let CONTACTS_DIRECTORY = loadContactsDirectory();
 
-const NOTIFICATIONS = [];
+let NOTIFICATIONS = loadNotifications();
 let CONVERSATIONS = loadConversations();
 
 let FRIENDSHIPS = { accepted: [], requests: [] };
@@ -94,6 +108,9 @@ let typingTimeout = null;
 // Lấy URL Backend linh hoạt: Chạy local hoặc trỏ tới domain Backend deploy ngoài
 function getBackendUrl() {
     if (window.BACKEND_API_URL) return window.BACKEND_API_URL.replace(/\/+$/, '');
+    if (['localhost', '127.0.0.1'].includes(window.location.hostname) && window.location.port === '8080') {
+        return '';
+    }
     const stored = localStorage.getItem('BACKEND_API_URL');
     if (stored) return stored.replace(/\/+$/, '');
 
@@ -102,10 +119,6 @@ function getBackendUrl() {
         return (window.BACKEND_URL_DEFAULT || 'https://chatapprealtime-production-ea7b4569.up.railway.app').replace(/\/+$/, '');
     }
 
-    // Khi chạy trên localhost:8080 (cùng port với Spring Boot), dùng relative path
-    if (['localhost', '127.0.0.1'].includes(window.location.hostname) && window.location.port === '8080') {
-        return '';
-    }
     // Khi chạy qua Live Server (port 3000, 5500,...) hoặc deploy ngoài:
     // Tự động kết nối tới Backend Railway
     return (window.BACKEND_URL_DEFAULT || 'https://chatapprealtime-production-ea7b4569.up.railway.app').replace(/\/+$/, '');
@@ -422,6 +435,22 @@ function conversationStorageKey() {
     return `${STORAGE_KEYS.CONVERSATIONS}:${CURRENT_USER.id}`;
 }
 
+function loadNotifications() {
+    if (!CURRENT_USER.id) return [];
+    try {
+        const items = JSON.parse(localStorage.getItem(`${STORAGE_KEYS.NOTIFICATIONS}:${CURRENT_USER.id}`) || '[]');
+        return Array.isArray(items) ? items : [];
+    } catch (_) { return []; }
+}
+
+function saveNotifications() {
+    if (!CURRENT_USER.id) return;
+    NOTIFICATIONS = NOTIFICATIONS.slice(0, 100);
+    try {
+        localStorage.setItem(`${STORAGE_KEYS.NOTIFICATIONS}:${CURRENT_USER.id}`, JSON.stringify(NOTIFICATIONS));
+    } catch (_) { }
+}
+
 function loadFriendships() {
     try {
         const raw = localStorage.getItem(STORAGE_KEYS.FRIENDSHIPS);
@@ -484,6 +513,8 @@ if (realtimeBus) {
 
         // Đồng bộ lại danh sách cuộc trò chuyện, danh bạ và kết bạn từ Kho lưu trữ chung
         CONVERSATIONS = loadConversations();
+        NOTIFICATIONS = loadNotifications();
+        renderNotifications();
         if (!serverAuthenticated) CONTACTS_DIRECTORY = loadContactsDirectory();
 
         if (data.type === 'FRIEND_REQUEST_SENT' && data.toId === CURRENT_USER.id) {
@@ -495,6 +526,7 @@ if (realtimeBus) {
                 time: 'Vừa xong',
                 unread: true
             });
+            saveNotifications();
             renderNotifications();
             showToast(`${data.fromName} vừa gửi lời mời kết bạn!`, 'fa-user-plus');
             if (USER_SETTINGS.soundNotif) playSubtleBeep();
@@ -509,6 +541,7 @@ if (realtimeBus) {
                 time: 'Vừa xong',
                 unread: true
             });
+            saveNotifications();
             renderNotifications();
             showToast(`${data.accepterName} đã chấp nhận lời mời kết bạn!`, 'fa-user-check');
         }
@@ -677,6 +710,51 @@ function sendChatMessage(conversationId, content) {
 /**
  * Xử lý khi nhận được gói tin JSON từ `/user/queue/messages` hoặc `/topic/room/{roomId}`
  */
+// Resolve the other participant even when they are not in the local contacts list.
+const profileLookups = new Map();
+async function resolveConversationProfile(partnerId) {
+    if (!serverAuthenticated || !partnerId || partnerId === CURRENT_USER.id) return;
+    if (profileLookups.has(partnerId)) return profileLookups.get(partnerId);
+    const ownerId = CURRENT_USER.id;
+    const lookup = (async () => {
+        try {
+            const response = await fetch(`${getBackendUrl()}/api/contact-profiles/${encodeURIComponent(partnerId)}`, { credentials: 'include' });
+            if (!response.ok || response.redirected) return;
+            const profile = await response.json();
+            if (CURRENT_USER.id !== ownerId || !profile.name) return;
+            const existing = CONTACTS_DIRECTORY.find(c => c.id === partnerId);
+            if (existing) {
+                existing.name = profile.name;
+                existing.avatar = profile.avatar || '';
+            } else {
+                CONTACTS_DIRECTORY.push({ id: partnerId, name: profile.name, email: '', avatar: profile.avatar || '', online: false });
+            }
+            for (const conv of CONVERSATIONS) {
+                if (conv.type === 'DIRECT' && (conv.contactId === partnerId || conv.participants?.includes(partnerId))) {
+                    conv.name = profile.name;
+                    conv.avatar = profile.avatar || '';
+                }
+            }
+            localStorage.setItem(conversationStorageKey(), JSON.stringify(CONVERSATIONS));
+            renderConversationList();
+            const active = getConversationById(activeConversationId);
+            if (active) updateActiveChatHeaderAndDrawer(active);
+        } catch (error) {
+            console.warn('Could not load contact profile:', error);
+        }
+    })();
+    profileLookups.set(partnerId, lookup);
+    try { await lookup; } finally { profileLookups.delete(partnerId); }
+}
+
+function resolveConversationProfiles() {
+    for (const conv of CONVERSATIONS) {
+        if (conv.type !== 'DIRECT') continue;
+        const partnerId = conv.participants?.find(id => id !== CURRENT_USER.id) || conv.contactId;
+        resolveConversationProfile(partnerId);
+    }
+}
+
 function handleIncomingSocketMessage(payload) {
     if (!payload || !payload.content) {
         return;
@@ -685,6 +763,7 @@ function handleIncomingSocketMessage(payload) {
     if (payload.sender && payload.recipient) {
         if (payload.sender !== CURRENT_USER.id && payload.recipient !== CURRENT_USER.id) return;
         const partnerId = payload.sender === CURRENT_USER.id ? payload.recipient : payload.sender;
+        resolveConversationProfile(partnerId);
         const contact = CONTACTS_DIRECTORY.find(c => c.id === partnerId) || {
             id: partnerId, name: 'Người dùng', avatar: ''
         };
@@ -777,6 +856,10 @@ function renderSavedAccountsOnAuthScreen() {
 }
 
 function logoutCurrentUser() {
+    fetch(`${getBackendUrl()}/api/auth/logout`, {
+        method: 'POST', credentials: 'include'
+    }).catch(() => {});
+    clearTimeout(reconnectTimer);
     sessionStorage.removeItem(STORAGE_KEYS.TAB_USER);
     CURRENT_USER = { id: '', name: '', email: '' };
     serverAuthenticated = false;
@@ -812,6 +895,8 @@ function loginAsUser(userObj, authenticatedByServer = false) {
     document.getElementById('authScreen')?.classList.add('d-none');
     document.getElementById('btnCloseAuthScreen')?.classList.remove('d-none');
     CONVERSATIONS = loadConversations();
+    NOTIFICATIONS = loadNotifications();
+    renderNotifications();
     activeConversationId = CONVERSATIONS[0]?.id || null;
     connectWebSocket();
 
@@ -1668,6 +1753,16 @@ function selectConversation(conversationId) {
         conv.unreadCount = 0;
         persistAndSyncConversations();
     }
+    if (!document.hidden) {
+        let changed = false;
+        NOTIFICATIONS.forEach((notification) => {
+            if (notification.conversationId === conv.id && notification.unread) {
+                notification.unread = false;
+                changed = true;
+            }
+        });
+        if (changed) { saveNotifications(); renderNotifications(); }
+    }
 
     emptyStateEl.classList.add('d-none');
     activeViewEl.classList.remove('d-none');
@@ -1997,6 +2092,7 @@ function renderNotifications() {
             const notif = NOTIFICATIONS.find((x) => x.id === notifId);
             if (notif) notif.unread = false;
 
+            saveNotifications();
             renderNotifications();
             document.getElementById('notificationPopover')?.classList.add('d-none');
             if (convId) selectConversation(convId);
@@ -2136,12 +2232,32 @@ function updateBadgesCount() {
 }
 
 function notifyIncomingMessage(conv, message) {
-    if (conv.muted || !USER_SETTINGS.desktopNotif ||
-            (activeConversationId === conv.id && !document.hidden)) return;
+    if (activeConversationId === conv.id && !document.hidden) return;
+
+    if (message.id && NOTIFICATIONS.some(n => n.id === `message-${message.id}`)) return;
+
+    NOTIFICATIONS.unshift({
+        id: `message-${message.id || Date.now()}`,
+        conversationId: conv.id,
+        title: getDisplayConversationName(conv),
+        content: `${message.senderName || 'Người dùng'}: ${message.content}`,
+        time: 'Vừa xong',
+        unread: true,
+        type: 'message'
+    });
+    saveNotifications();
+    renderNotifications();
+    if (conv.muted || !USER_SETTINGS.desktopNotif) return;
 
     if (!document.hidden) {
         showToast(`${getDisplayConversationName(conv)}: ${message.content}`, 'fa-message', 5000,
             () => selectConversation(conv.id));
+    } else if ('Notification' in window && Notification.permission === 'granted') {
+        const notice = new Notification(getDisplayConversationName(conv), {
+            body: `${message.senderName || 'Người dùng'}: ${message.content}`,
+            icon: 'logo.svg', tag: `chat-${conv.id}`
+        });
+        notice.onclick = () => { window.focus(); selectConversation(conv.id); notice.close(); };
     }
     if (USER_SETTINGS.soundNotif) playSubtleBeep();
 }
@@ -2626,9 +2742,16 @@ async function checkBackendAuth() {
                 } else {
                     document.getElementById('authScreen')?.classList.add('d-none');
                     document.getElementById('btnCloseAuthScreen')?.classList.remove('d-none');
+                    if (!isWsConnected) connectWebSocket();
                 }
                 await refreshFriends();
+                resolveConversationProfiles();
                 if (!friendRefreshTimer) friendRefreshTimer = setInterval(refreshFriends, 15000);
+            } else if (CURRENT_USER.id && !serverAuthenticated) {
+                sessionStorage.removeItem(STORAGE_KEYS.TAB_USER);
+                CURRENT_USER = { id: '', name: '', email: '' };
+                openAuthScreen('login', true);
+                updateWsStatusUI('disconnected', 'Vui lòng đăng nhập');
             }
         }
     } catch (err) {
@@ -2640,6 +2763,17 @@ async function checkBackendAuth() {
 // 10. KHỞI TẠO SỰ KIỆN KHI TRANG TẢI XONG
 // --------------------------------------------------------------------------
 document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('toggleDesktopNotif').checked = USER_SETTINGS.desktopNotif;
+    document.getElementById('toggleSoundNotif').checked = USER_SETTINGS.soundNotif;
+    const browserNotifButton = document.getElementById('btnEnableBrowserNotif');
+    if ('Notification' in window && Notification.permission === 'default') {
+        browserNotifButton?.classList.remove('d-none');
+        browserNotifButton?.addEventListener('click', async () => {
+            const permission = await Notification.requestPermission();
+            browserNotifButton.classList.toggle('d-none', permission !== 'default');
+            showToast(permission === 'granted' ? 'Đã bật thông báo trình duyệt' : 'Trình duyệt chưa cấp quyền thông báo');
+        });
+    }
     document.addEventListener('visibilitychange', () => {
         if (!document.hidden && activeConversationId) {
             const conv = getConversationById(activeConversationId);
@@ -2647,6 +2781,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 conv.unreadCount = 0;
                 persistAndSyncConversations();
                 renderConversationList();
+            }
+            if (conv) {
+                let changed = false;
+                NOTIFICATIONS.forEach(n => {
+                    if (n.conversationId === conv.id && n.unread) { n.unread = false; changed = true; }
+                });
+                if (changed) { saveNotifications(); renderNotifications(); }
             }
         }
     });
@@ -2661,7 +2802,6 @@ document.addEventListener('DOMContentLoaded', () => {
     selectConversation(activeConversationId);
 
     if (CURRENT_USER.id && CURRENT_USER.email) {
-        connectWebSocket();
         document.getElementById('authScreen')?.classList.add('d-none');
         document.getElementById('btnCloseAuthScreen')?.classList.remove('d-none');
     } else {
@@ -3204,6 +3344,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('btnMarkAllNotifRead').addEventListener('click', () => {
         NOTIFICATIONS.forEach((n) => (n.unread = false));
+        saveNotifications();
         renderNotifications();
         showToast('Đã đánh dấu tất cả thông báo là đã đọc', 'fa-check-double');
     });
@@ -3256,10 +3397,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('toggleDesktopNotif').addEventListener('change', (e) => {
         USER_SETTINGS.desktopNotif = e.target.checked;
+        saveNotificationSettings();
     });
 
     document.getElementById('toggleSoundNotif').addEventListener('change', (e) => {
         USER_SETTINGS.soundNotif = e.target.checked;
+        saveNotificationSettings();
     });
 
     // Mobile Back
