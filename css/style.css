@@ -95,10 +95,18 @@ body {
 }
 
 .topbar-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
     font-size: 1.05rem;
     font-weight: 700;
     letter-spacing: 0.06em;
     color: #ffffff;
+}
+
+.topbar-logo {
+    width: 30px;
+    height: 30px;
 }
 
 .topbar-ws-pill {
@@ -1476,17 +1484,9 @@ body.dark-mode .auth-card::-webkit-scrollbar-thumb {
     text-decoration: underline !important;
 }
 
-.brand-logo-circle {
-    width: 52px;
-    height: 52px;
-    border-radius: 50%;
-    background: var(--topbar-bg);
-    color: #ffffff;
-    font-weight: 700;
-    font-size: 1.1rem;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
+.brand-logo {
+    width: 60px;
+    height: 60px;
     margin-bottom: 10px;
 }
 

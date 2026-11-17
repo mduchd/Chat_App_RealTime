@@ -519,23 +519,10 @@ if (realtimeBus) {
         if (data.type === 'NEW_MESSAGE' && data.message) {
             const targetConv = getConversationById(data.conversationId);
             if (targetConv && data.message.senderId !== CURRENT_USER.id && !targetConv.blocked) {
-                if (activeConversationId !== targetConv.id) {
+                if (activeConversationId !== targetConv.id || document.hidden) {
                     targetConv.unreadCount = (targetConv.unreadCount || 0) + 1;
                 }
-                if (!targetConv.muted && USER_SETTINGS.desktopNotif) {
-                    NOTIFICATIONS.unshift({
-                        id: 'notif-' + Date.now(),
-                        conversationId: targetConv.id,
-                        title: targetConv.name,
-                        content: `${data.message.senderName}: ${data.message.content || 'Đã gửi một hình ảnh'}`,
-                        time: 'Vừa xong',
-                        unread: true
-                    });
-                    renderNotifications();
-                    if (USER_SETTINGS.soundNotif) {
-                        playSubtleBeep();
-                    }
-                }
+                notifyIncomingMessage(targetConv, data.message);
             }
         }
 
@@ -723,6 +710,7 @@ function handleIncomingSocketMessage(payload) {
             timestamp: payload.sentAt || new Date().toISOString()
         };
         appendMessageToConversation(direct.id, message, false);
+        if (message.senderId !== CURRENT_USER.id) notifyIncomingMessage(direct, message);
         if (realtimeBus) realtimeBus.postMessage({type: 'SYNC_STATE', senderTabUserId: CURRENT_USER.id});
         return;
     }
@@ -750,20 +738,7 @@ function handleIncomingSocketMessage(payload) {
 
     appendMessageToConversation(targetConvId, msgObj, false);
 
-    if (conv && !conv.muted && USER_SETTINGS.desktopNotif) {
-        NOTIFICATIONS.unshift({
-            id: 'notif-' + Date.now(),
-            conversationId: conv.id,
-            title: getDisplayConversationName(conv),
-            content: `${msgObj.senderName}: ${msgObj.content}`,
-            time: 'Vừa xong',
-            unread: true
-        });
-        renderNotifications();
-        if (USER_SETTINGS.soundNotif) {
-            playSubtleBeep();
-        }
-    }
+    if (conv) notifyIncomingMessage(conv, msgObj);
 }
 
 // --------------------------------------------------------------------------
@@ -1689,7 +1664,10 @@ function selectConversation(conversationId) {
         return;
     }
 
-    conv.unreadCount = 0;
+    if (!document.hidden && conv.unreadCount) {
+        conv.unreadCount = 0;
+        persistAndSyncConversations();
+    }
 
     emptyStateEl.classList.add('d-none');
     activeViewEl.classList.remove('d-none');
@@ -2074,7 +2052,9 @@ function appendMessageToConversation(conversationId, messageObj, broadcastToOthe
 
     if (activeConversationId === conversationId) {
         renderMessages(conv);
-    } else {
+    }
+    if (messageObj.senderId !== CURRENT_USER.id &&
+            (activeConversationId !== conversationId || document.hidden)) {
         conv.unreadCount = (conv.unreadCount || 0) + 1;
     }
 
@@ -2134,6 +2114,8 @@ function updateBadgesCount() {
         (sum, c) => sum + (c.unreadCount || 0),
         0
     );
+    const baseTitle = CURRENT_USER.name ? `CHATSPACE — ${CURRENT_USER.name}` : 'CHATSPACE';
+    document.title = totalUnread > 0 ? `(${totalUnread}) ${baseTitle}` : baseTitle;
 
     const archivedBadge = document.getElementById('archivedCountBadge');
     const railArchivedBadge = document.getElementById('railArchivedBadge');
@@ -2153,13 +2135,37 @@ function updateBadgesCount() {
     }
 }
 
-function showToast(message, iconClass = 'fa-circle-info', duration = 3200) {
+function notifyIncomingMessage(conv, message) {
+    if (conv.muted || !USER_SETTINGS.desktopNotif ||
+            (activeConversationId === conv.id && !document.hidden)) return;
+
+    if (!document.hidden) {
+        showToast(`${getDisplayConversationName(conv)}: ${message.content}`, 'fa-message', 5000,
+            () => selectConversation(conv.id));
+    }
+    if (USER_SETTINGS.soundNotif) playSubtleBeep();
+}
+
+function showToast(message, iconClass = 'fa-circle-info', duration = 3200, onClick = null) {
     const container = document.getElementById('toastContainer');
     if (!container) return;
 
     const toast = document.createElement('div');
     toast.className = 'chat-toast';
     toast.innerHTML = `<i class="fa-solid ${iconClass} text-info"></i><span>${escapeHtml(message)}</span>`;
+    if (onClick) {
+        toast.setAttribute('role', 'button');
+        toast.tabIndex = 0;
+        toast.style.cursor = 'pointer';
+        const activate = () => { onClick(); toast.remove(); };
+        toast.addEventListener('click', activate);
+        toast.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                activate();
+            }
+        });
+    }
     container.appendChild(toast);
 
     setTimeout(() => {
@@ -2634,6 +2640,16 @@ async function checkBackendAuth() {
 // 10. KHỞI TẠO SỰ KIỆN KHI TRANG TẢI XONG
 // --------------------------------------------------------------------------
 document.addEventListener('DOMContentLoaded', () => {
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden && activeConversationId) {
+            const conv = getConversationById(activeConversationId);
+            if (conv?.unreadCount) {
+                conv.unreadCount = 0;
+                persistAndSyncConversations();
+                renderConversationList();
+            }
+        }
+    });
     updateCurrentUserProfileUI();
     updateFriendBadges();
     renderFriendsModalList();

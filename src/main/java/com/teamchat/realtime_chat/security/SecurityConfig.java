@@ -51,7 +51,7 @@ public class SecurityConfig {
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .csrf(csrf -> csrf.disable()) // Tạm tắt CSRF để dễ dàng test API ở môi trường dev
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/", "/login**", "/error", "/oauth2/**", "/login/oauth2/code/**",
+                .requestMatchers("/", "/index.html", "/logo.svg", "/login**", "/error", "/oauth2/**", "/login/oauth2/code/**",
                         "/css/**", "/js/**", "/ws/**", "/ws-sockjs/**", "/ws-test.html",
                         "/api/me", "/api/auth/**").permitAll()
                 .anyRequest().authenticated()

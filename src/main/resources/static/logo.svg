@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title">
+  <title>Realtime Chat</title>
+  <path fill="#1677e8" d="M47 44h162c17 0 31 14 31 31v86c0 17-14 31-31 31h-74l-43 32v-32H47c-17 0-31-14-31-31V75c0-17 14-31 31-31Z"/>
+  <path d="M63 119h27l13-27 22 56 20-42 10 13h38" fill="none" stroke="#fff" stroke-width="15" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
