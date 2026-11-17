@@ -6,5 +6,7 @@ public record PrivateMessageEvent(
         String sender,
         String recipient,
         String content,
-        Instant sentAt
+        Instant sentAt,
+        String senderName,
+        String senderAvatar
 ) {}

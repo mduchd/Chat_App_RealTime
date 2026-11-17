@@ -593,6 +593,8 @@ function connectWebSocket() {
         const client = Stomp.over(socket);
         stompClient = client;
         client.debug = null;
+        client.heartbeat.outgoing = 10000;
+        client.heartbeat.incoming = 10000;
 
         client.connect(
             {},
@@ -723,7 +725,7 @@ async function resolveConversationProfile(partnerId) {
     const ownerId = CURRENT_USER.id;
     const lookup = (async () => {
         try {
-            const response = await fetch(`${getBackendUrl()}/api/contact-profiles/${encodeURIComponent(partnerId)}`, { credentials: 'include' });
+            const response = await fetch(`${getBackendUrl()}/api/contact-profiles/${encodeURIComponent(partnerId)}`, { credentials: 'include', signal: AbortSignal.timeout(5000) });
             if (!response.ok || response.redirected) return;
             const profile = await response.json();
             if (CURRENT_USER.id !== ownerId || !profile.name) return;
@@ -770,14 +772,14 @@ async function handleIncomingSocketMessage(payload) {
         const partnerId = payload.sender === CURRENT_USER.id ? payload.recipient : payload.sender;
         const ownerId = CURRENT_USER.id;
         const knownContact = CONTACTS_DIRECTORY.find(c => c.id === partnerId);
-        if (!knownContact?.name || knownContact.name === 'Người dùng') {
+        if (!payload.senderName && (!knownContact?.name || knownContact.name === 'Người dùng')) {
             await resolveConversationProfile(partnerId);
             if (CURRENT_USER.id !== ownerId) return;
         } else {
             resolveConversationProfile(partnerId);
         }
         const contact = CONTACTS_DIRECTORY.find(c => c.id === partnerId) || {
-            id: partnerId, name: 'Người dùng', avatar: ''
+            id: partnerId, name: payload.senderName || 'Người dùng', avatar: payload.senderAvatar || ''
         };
         let direct = CONVERSATIONS.find(c => c.type === 'DIRECT' &&
             c.participants?.includes(CURRENT_USER.id) && c.participants.includes(partnerId));
@@ -792,12 +794,19 @@ async function handleIncomingSocketMessage(payload) {
             };
             CONVERSATIONS.unshift(direct);
         }
-        if (direct.blocked || direct.messages.some(m => m.id === payload.id)) return;
+        if (direct.blocked) return;
+        const existingMessage = direct.messages.find(m => m.id === payload.id);
+        if (existingMessage) {
+            // Another tab may have persisted the message before this socket received it.
+            if (payload.senderName) existingMessage.senderName = payload.senderName;
+            if (payload.sender !== CURRENT_USER.id) notifyIncomingMessage(direct, existingMessage);
+            return;
+        }
         const sender = CONTACTS_DIRECTORY.find(c => c.id === payload.sender);
         const message = {
             id: payload.id, senderId: payload.sender,
-            senderName: sender?.name || (payload.sender === CURRENT_USER.id ? CURRENT_USER.name : 'Người dùng'),
-            senderAvatar: sender?.avatar || '', content: payload.content,
+            senderName: payload.senderName || sender?.name || (payload.sender === CURRENT_USER.id ? CURRENT_USER.name : 'Người dùng'),
+            senderAvatar: payload.senderAvatar || sender?.avatar || '', content: payload.content,
             timestamp: payload.sentAt || new Date().toISOString()
         };
         appendMessageToConversation(direct.id, message, false);
@@ -2270,35 +2279,111 @@ function updateBadgesCount() {
     }
 }
 
-function notifyIncomingMessage(conv, message) {
-    if (activeConversationId === conv.id && !document.hidden && document.hasFocus()) return;
-
-    if (message.id && NOTIFICATIONS.some(n => n.id === `message-${message.id}`)) return;
-
-    NOTIFICATIONS.unshift({
-        id: `message-${message.id || Date.now()}`,
-        conversationId: conv.id,
-        title: getDisplayConversationName(conv),
-        content: `${message.senderName || 'Người dùng'}: ${message.content}`,
-        time: 'Vừa xong',
-        unread: true,
-        type: 'message'
-    });
-    saveNotifications();
-    renderNotifications();
-    if (conv.muted || !USER_SETTINGS.desktopNotif) return;
-
-    if (!document.hidden && document.hasFocus()) {
-        showToast(`${getDisplayConversationName(conv)}: ${message.content}`, 'fa-message', 5000,
-            () => selectConversation(conv.id));
-    } else if ('Notification' in window && Notification.permission === 'granted') {
-        const notice = new Notification(getDisplayConversationName(conv), {
-            body: `${message.senderName || 'Người dùng'}: ${message.content}`,
-            icon: 'logo.svg', tag: `chat-${conv.id}`
-        });
-        notice.onclick = () => { window.focus(); selectConversation(conv.id); notice.close(); };
+// Notification delivery has its own deduplication; the inbox is shared across tabs.
+const deliveredDesktopMessages = new Set();
+let notificationWorkerPromise;
+function prepareNotificationWorker() {
+    if (!window.isSecureContext || !('serviceWorker' in navigator)) return Promise.resolve(null);
+    if (!notificationWorkerPromise) {
+        notificationWorkerPromise = Promise.race([
+            navigator.serviceWorker.register('./notification-worker.js').then(() => navigator.serviceWorker.ready),
+            new Promise(resolve => setTimeout(() => resolve(null), 5000))
+        ])
+            .catch(error => { console.warn('Notification worker unavailable:', error); return null; })
+            .then(registration => {
+                if (!registration) notificationWorkerPromise = null;
+                return registration;
+            });
     }
-    if (USER_SETTINGS.soundNotif) playSubtleBeep();
+    return notificationWorkerPromise;
+}
+
+async function showDesktopNotification(title, options, conversationId) {
+    if (!window.isSecureContext || !('Notification' in window) || Notification.permission !== 'granted') return false;
+    try {
+        const registration = await prepareNotificationWorker();
+        if (registration?.showNotification) {
+            try {
+                await registration.showNotification(title, {
+                    ...options, data: { conversationId, url: window.location.href }
+                });
+                return true;
+            } catch (error) { console.warn('Worker notification failed, trying page notification:', error); }
+        }
+        const notice = new Notification(title, options);
+        notice.onclick = () => {
+            window.focus();
+            if (conversationId) selectConversation(conversationId);
+            notice.close();
+        };
+        return true;
+    } catch (error) {
+        console.warn('Unable to display desktop notification:', error);
+        return false;
+    }
+}
+
+async function deliverDesktopMessage(conv, message) {
+    const ownerId = CURRENT_USER.id;
+    const key = `chatspace_desktop:${ownerId}:${message.id}`;
+    const deliver = async () => {
+        if (CURRENT_USER.id !== ownerId || conv.blocked || conv.muted || !USER_SETTINGS.desktopNotif) return false;
+        if (activeConversationId === conv.id && !document.hidden && document.hasFocus()) return true;
+        if (deliveredDesktopMessages.has(key)) return true;
+        try { if (localStorage.getItem(key)) return true; } catch (_) { }
+        const displayed = await showDesktopNotification(getDisplayConversationName(conv), {
+            body: `${message.senderName || 'Người dùng'}: ${message.content || 'Đã gửi tệp đính kèm'}`,
+            icon: new URL('logo.svg', window.location.href).href,
+            // Each message must alert even if the previous notification is still present.
+            tag: `chat-${ownerId}-${message.id}`
+        }, conv.id);
+        if (displayed) {
+            deliveredDesktopMessages.add(key);
+            if (deliveredDesktopMessages.size > 500) deliveredDesktopMessages.delete(deliveredDesktopMessages.values().next().value);
+            try {
+                localStorage.setItem(key, String(Date.now()));
+                // Bound delivery records without affecting recent duplicate suppression.
+                for (let i = localStorage.length - 1; i >= 0; i--) {
+                    const storedKey = localStorage.key(i);
+                    if (storedKey?.startsWith('chatspace_desktop:') && Number(localStorage.getItem(storedKey)) < Date.now() - 86400000) {
+                        localStorage.removeItem(storedKey);
+                    }
+                }
+            } catch (_) { }
+        }
+        return displayed;
+    };
+    // Serialize tabs so that persisting the inbox never suppresses desktop delivery.
+    try {
+        return navigator.locks?.request ? await navigator.locks.request(key, deliver) : await deliver();
+    } catch (error) { console.warn('Desktop delivery failed:', error); return false; }
+}
+
+function notifyIncomingMessage(conv, message) {
+    if (message.senderId === CURRENT_USER.id || conv.blocked) return;
+    if (activeConversationId === conv.id && !document.hidden && document.hasFocus()) return;
+    const alreadyInInbox = message.id && NOTIFICATIONS.some(n => n.id === `message-${message.id}`);
+    if (!alreadyInInbox) {
+        NOTIFICATIONS.unshift({
+            id: `message-${message.id || Date.now()}`,
+            conversationId: conv.id,
+            title: getDisplayConversationName(conv),
+            content: `${message.senderName || 'Người dùng'}: ${message.content || 'Đã gửi tệp đính kèm'}`,
+            time: 'Vừa xong', unread: true, type: 'message'
+        });
+        saveNotifications();
+        renderNotifications();
+    }
+    if (conv.muted) return;
+    if (!alreadyInInbox && USER_SETTINGS.soundNotif) playSubtleBeep();
+    if (USER_SETTINGS.desktopNotif) {
+        void deliverDesktopMessage(conv, message).then(displayed => {
+            if (!displayed && !alreadyInInbox && !document.hidden && document.hasFocus()) {
+                showToast(`${getDisplayConversationName(conv)}: ${message.content}`, 'fa-message', 5000,
+                    () => selectConversation(conv.id));
+            }
+        });
+    }
 }
 
 function showToast(message, iconClass = 'fa-circle-info', duration = 3200, onClick = null) {
@@ -2820,8 +2905,22 @@ async function checkBackendAuth() {
 document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('toggleDesktopNotif').checked = USER_SETTINGS.desktopNotif;
     document.getElementById('toggleSoundNotif').checked = USER_SETTINGS.soundNotif;
+    void prepareNotificationWorker();
+    navigator.serviceWorker?.addEventListener('message', event => {
+        if (event.data?.type === 'OPEN_CONVERSATION' && event.data.conversationId) {
+            selectConversation(event.data.conversationId);
+        }
+    });
+    const notificationConversation = new URL(window.location.href).searchParams.get('conversation');
+    if (notificationConversation) {
+        const openRequestedConversation = () => {
+            if (getConversationById(notificationConversation)) selectConversation(notificationConversation);
+        };
+        window.addEventListener('focus', openRequestedConversation, { once: true });
+        setTimeout(openRequestedConversation, 0);
+    }
     const browserNotifButton = document.getElementById('btnEnableBrowserNotif');
-    if ('Notification' in window && browserNotifButton) {
+    if ('Notification' in window && window.isSecureContext && browserNotifButton) {
         const updateNotificationButton = () => {
             browserNotifButton.textContent = Notification.permission === 'granted'
                 ? 'Thử thông báo desktop'
@@ -2836,23 +2935,35 @@ document.addEventListener('DOMContentLoaded', () => {
                 showToast('Hãy cho phép thông báo của trang trong cài đặt trình duyệt.', 'fa-circle-exclamation');
                 return;
             }
-            const permission = Notification.permission === 'granted'
-                ? 'granted' : await Notification.requestPermission();
+            let permission;
+            try {
+                permission = Notification.permission === 'granted'
+                    ? 'granted' : await Notification.requestPermission();
+            } catch (error) {
+                showToast('Không thể xin quyền thông báo. Kiểm tra cài đặt trình duyệt.', 'fa-circle-exclamation');
+                return;
+            }
             updateNotificationButton();
             if (permission === 'granted') {
                 USER_SETTINGS.desktopNotif = true;
                 document.getElementById('toggleDesktopNotif').checked = true;
                 saveNotificationSettings();
-                const notice = new Notification('ChatSpace', {
-                    body: 'Thông báo desktop đã hoạt động.', icon: 'logo.svg', tag: 'chatspace-test'
+                const displayed = await showDesktopNotification('ChatSpace', {
+                    body: 'Thông báo desktop đã hoạt động.', icon: 'logo.svg', tag: `chatspace-test-${Date.now()}`
                 });
-                notice.onclick = () => { window.focus(); notice.close(); };
+                showToast(displayed
+                    ? 'Đã gửi thông báo thử. Nếu không thấy banner, kiểm tra thông báo và chế độ Không làm phiền của hệ điều hành.'
+                    : 'Không tạo được thông báo. Kiểm tra quyền thông báo của trang và trình duyệt.', 'fa-circle-info', 7000);
             } else {
                 showToast('Trình duyệt chưa cấp quyền thông báo.', 'fa-circle-exclamation');
             }
         });
     }
+    window.addEventListener('online', () => {
+        if (CURRENT_USER.id && serverAuthenticated && !isWsConnected) connectWebSocket();
+    });
     document.addEventListener('visibilitychange', () => {
+        if (!document.hidden && CURRENT_USER.id && serverAuthenticated && !isWsConnected) connectWebSocket();
         if (!document.hidden && activeConversationId) {
             const conv = getConversationById(activeConversationId);
             if (conv?.unreadCount) {
@@ -3481,6 +3592,11 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('toggleDesktopNotif').addEventListener('change', (e) => {
         USER_SETTINGS.desktopNotif = e.target.checked;
         saveNotificationSettings();
+        if (e.target.checked && (!('Notification' in window) || !window.isSecureContext)) {
+            showToast('Trình duyệt này chưa hỗ trợ thông báo desktop. Hãy dùng HTTPS và trình duyệt có hỗ trợ thông báo.', 'fa-circle-info', 6000);
+        } else if (e.target.checked && Notification.permission !== 'granted') {
+            document.getElementById('btnEnableBrowserNotif')?.click();
+        }
     });
 
     document.getElementById('toggleSoundNotif').addEventListener('change', (e) => {

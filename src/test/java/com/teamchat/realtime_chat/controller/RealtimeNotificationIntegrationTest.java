@@ -56,6 +56,7 @@ class RealtimeNotificationIntegrationTest {
                 String event = received.poll(5, TimeUnit.SECONDS);
                 assertNotNull(event);
                 assertTrue(event.contains("notification-check"), event);
+                assertTrue(event.contains("\"senderName\":\"WS Test\""), event);
                 assertTrue(event.contains(sender.getId().toString()), event);
             } finally {
                 senderSocket.close();
