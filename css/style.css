@@ -1999,3 +1999,20 @@ body.dark-mode .auth-alert-banner.alert-info {
         display: none;
     }
 }
+
+/* Keep initials visible as a fallback if the profile image cannot load. */
+.topbar-user-initials,
+.conv-avatar-circle {
+    position: relative;
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+.profile-avatar-image {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 50%;
+}

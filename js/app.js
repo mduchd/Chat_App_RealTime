@@ -837,6 +837,23 @@ function getInitials(name, customText) {
     return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
+function avatarContent(avatar, initials) {
+    let image = '';
+    try {
+        const url = new URL(avatar);
+        if (url.protocol === 'https:' || url.protocol === 'http:') {
+            image = `<img class="profile-avatar-image" src="${escapeHtml(url.href)}" alt="" onerror="this.remove()">`;
+        }
+    } catch (_) {
+        // Missing or invalid image URLs use the initials underneath.
+    }
+    return `${escapeHtml(initials)}${image}`;
+}
+
+function renderUserAvatar(avatar, initials, active = false) {
+    return `<div class="conv-avatar-circle ${active ? 'active-avatar' : ''}">${avatarContent(avatar, initials)}</div>`;
+}
+
 function updateCurrentUserProfileUI() {
     const topbarInitials = document.getElementById('topbarUserInitials');
     const sidebarUsername = document.getElementById('sidebarCurrentUsername');
@@ -845,13 +862,13 @@ function updateCurrentUserProfileUI() {
     const settingsEmail = document.getElementById('settingsUserEmail');
 
     const initials = getInitials(CURRENT_USER.name, CURRENT_USER.initials);
-    if (topbarInitials) topbarInitials.textContent = initials;
+    if (topbarInitials) topbarInitials.innerHTML = avatarContent(CURRENT_USER.avatar, initials);
     const menuName = document.getElementById('accountMenuName');
     const menuEmail = document.getElementById('accountMenuEmail');
     if (menuName) menuName.textContent = CURRENT_USER.name || 'Tài khoản';
     if (menuEmail) menuEmail.textContent = CURRENT_USER.email || '';
     if (sidebarUsername) sidebarUsername.textContent = CURRENT_USER.shortName || CURRENT_USER.name || 'Đăng nhập';
-    if (settingsInitials) settingsInitials.textContent = initials;
+    if (settingsInitials) settingsInitials.innerHTML = avatarContent(CURRENT_USER.avatar, initials);
     if (settingsName) settingsName.textContent = CURRENT_USER.name;
     if (settingsEmail) settingsEmail.textContent = CURRENT_USER.email;
 
@@ -1664,7 +1681,7 @@ function renderConversationList() {
                     ? conv.avatarText || 'GR'
                     : getInitials(displayName, conv.avatarText);
 
-            const avatarHtml = `<div class="conv-avatar-circle ${isActive ? 'active-avatar' : ''}">${escapeHtml(initialsText)}</div>`;
+            const avatarHtml = renderUserAvatar(getDisplayConversationAvatar(conv), initialsText, isActive);
 
             const pinIconHtml = conv.pinned
                 ? `<i class="fa-solid fa-thumbtack conv-flag-icon pinned" title="Đã ghim"></i>`
@@ -1797,7 +1814,7 @@ function updateActiveChatHeaderAndDrawer(conv) {
         ? conv.avatarText || 'GR'
         : getInitials(displayName, conv.avatarText);
 
-    const avatarHtml = `<div class="conv-avatar-circle active-avatar">${escapeHtml(initialsText)}</div>`;
+    const avatarHtml = renderUserAvatar(getDisplayConversationAvatar(conv), initialsText, true);
 
     const headerAvatarWrap = document.getElementById('chatHeaderAvatarWrapper');
     if (headerAvatarWrap) headerAvatarWrap.innerHTML = avatarHtml;
@@ -2588,7 +2605,7 @@ function renderFriendsModalList() {
                 return `
                     <div class="friend-account-row">
                         <div class="friend-account-info">
-                            <div class="conv-avatar-circle active-avatar">${escapeHtml(initials)}</div>
+                            ${renderUserAvatar(partner.avatar, initials, true)}
                             <div class="min-w-0">
                                 <div class="friend-account-name text-truncate">${escapeHtml(partner.name)}</div>
                                 <div class="friend-account-email text-truncate">
@@ -2632,7 +2649,7 @@ function renderFriendsModalList() {
                 return `
                     <div class="friend-account-row">
                         <div class="friend-account-info">
-                            <div class="conv-avatar-circle active-avatar">${escapeHtml(initials)}</div>
+                            ${renderUserAvatar(friend.avatar, initials, true)}
                             <div class="min-w-0">
                                 <div class="friend-account-name text-truncate">${escapeHtml(friend.name)}</div>
                                 <div class="friend-account-email text-truncate">${escapeHtml(friend.email)}</div>
@@ -2702,7 +2719,7 @@ function renderFriendsModalList() {
                 return `
                     <div class="friend-account-row">
                         <div class="friend-account-info">
-                            <div class="conv-avatar-circle ${isFriend ? 'active-avatar' : ''}">${escapeHtml(initials)}</div>
+                            ${renderUserAvatar(acc.avatar, initials, isFriend)}
                             <div class="min-w-0">
                                 <div class="friend-account-name text-truncate">${escapeHtml(acc.name)}</div>
                                 <div class="friend-account-email text-truncate">${escapeHtml(acc.email)}</div>
@@ -2768,7 +2785,7 @@ async function checkBackendAuth() {
                     online: true,
                     avatar: data.picture || `https://ui-avatars.com/api/?name=${encodeURIComponent(data.name || 'U')}&background=0095f6&color=fff&bold=true`
                 };
-                if (CURRENT_USER.id !== userObj.id || CURRENT_USER.email !== userObj.email || CURRENT_USER.name !== userObj.name) {
+                if (CURRENT_USER.id !== userObj.id || CURRENT_USER.email !== userObj.email || CURRENT_USER.name !== userObj.name || CURRENT_USER.avatar !== userObj.avatar) {
                     loginAsUser(userObj, true);
                 } else {
                     document.getElementById('authScreen')?.classList.add('d-none');
