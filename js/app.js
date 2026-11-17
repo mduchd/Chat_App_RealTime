@@ -850,7 +850,7 @@ function updateCurrentUserProfileUI() {
     if (settingsName) settingsName.textContent = CURRENT_USER.name;
     if (settingsEmail) settingsEmail.textContent = CURRENT_USER.email;
 
-    document.title = `CHATSPACE — ${CURRENT_USER.name}`;
+    updateBadgesCount();
 }
 
 function renderSavedAccountsOnAuthScreen() {
@@ -2215,7 +2215,13 @@ function updateBadgesCount() {
         0
     );
     const baseTitle = CURRENT_USER.name ? `CHATSPACE — ${CURRENT_USER.name}` : 'CHATSPACE';
-    document.title = totalUnread > 0 ? `(${totalUnread}) ${baseTitle}` : baseTitle;
+    const unread = CURRENT_USER.id ? totalUnread : 0;
+    document.title = unread > 0 ? `(${unread}) ${baseTitle}` : baseTitle;
+    const favicon = document.querySelector('link[rel="icon"]');
+    if (favicon) {
+        const icon = unread > 0 ? 'logo-unread.svg' : 'logo.svg';
+        if (favicon.getAttribute('href') !== icon) favicon.setAttribute('href', icon);
+    }
 
     const archivedBadge = document.getElementById('archivedCountBadge');
     const railArchivedBadge = document.getElementById('railArchivedBadge');
@@ -2236,7 +2242,7 @@ function updateBadgesCount() {
 }
 
 function notifyIncomingMessage(conv, message) {
-    if (activeConversationId === conv.id && !document.hidden) return;
+    if (activeConversationId === conv.id && !document.hidden && document.hasFocus()) return;
 
     if (message.id && NOTIFICATIONS.some(n => n.id === `message-${message.id}`)) return;
 
@@ -2253,7 +2259,7 @@ function notifyIncomingMessage(conv, message) {
     renderNotifications();
     if (conv.muted || !USER_SETTINGS.desktopNotif) return;
 
-    if (!document.hidden) {
+    if (!document.hidden && document.hasFocus()) {
         showToast(`${getDisplayConversationName(conv)}: ${message.content}`, 'fa-message', 5000,
             () => selectConversation(conv.id));
     } else if ('Notification' in window && Notification.permission === 'granted') {
@@ -2770,12 +2776,35 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('toggleDesktopNotif').checked = USER_SETTINGS.desktopNotif;
     document.getElementById('toggleSoundNotif').checked = USER_SETTINGS.soundNotif;
     const browserNotifButton = document.getElementById('btnEnableBrowserNotif');
-    if ('Notification' in window && Notification.permission === 'default') {
-        browserNotifButton?.classList.remove('d-none');
-        browserNotifButton?.addEventListener('click', async () => {
-            const permission = await Notification.requestPermission();
-            browserNotifButton.classList.toggle('d-none', permission !== 'default');
-            showToast(permission === 'granted' ? 'Đã bật thông báo trình duyệt' : 'Trình duyệt chưa cấp quyền thông báo');
+    if ('Notification' in window && browserNotifButton) {
+        const updateNotificationButton = () => {
+            browserNotifButton.textContent = Notification.permission === 'granted'
+                ? 'Thử thông báo desktop'
+                : Notification.permission === 'denied'
+                    ? 'Thông báo đang bị chặn'
+                    : 'Bật thông báo desktop';
+        };
+        browserNotifButton.classList.remove('d-none');
+        updateNotificationButton();
+        browserNotifButton.addEventListener('click', async () => {
+            if (Notification.permission === 'denied') {
+                showToast('Hãy cho phép thông báo của trang trong cài đặt trình duyệt.', 'fa-circle-exclamation');
+                return;
+            }
+            const permission = Notification.permission === 'granted'
+                ? 'granted' : await Notification.requestPermission();
+            updateNotificationButton();
+            if (permission === 'granted') {
+                USER_SETTINGS.desktopNotif = true;
+                document.getElementById('toggleDesktopNotif').checked = true;
+                saveNotificationSettings();
+                const notice = new Notification('ChatSpace', {
+                    body: 'Thông báo desktop đã hoạt động.', icon: 'logo.svg', tag: 'chatspace-test'
+                });
+                notice.onclick = () => { window.focus(); notice.close(); };
+            } else {
+                showToast('Trình duyệt chưa cấp quyền thông báo.', 'fa-circle-exclamation');
+            }
         });
     }
     document.addEventListener('visibilitychange', () => {
