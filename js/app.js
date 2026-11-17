@@ -760,7 +760,7 @@ function resolveConversationProfiles() {
     }
 }
 
-function handleIncomingSocketMessage(payload) {
+async function handleIncomingSocketMessage(payload) {
     if (!payload || !payload.content) {
         return;
     }
@@ -768,7 +768,14 @@ function handleIncomingSocketMessage(payload) {
     if (payload.sender && payload.recipient) {
         if (payload.sender !== CURRENT_USER.id && payload.recipient !== CURRENT_USER.id) return;
         const partnerId = payload.sender === CURRENT_USER.id ? payload.recipient : payload.sender;
-        resolveConversationProfile(partnerId);
+        const ownerId = CURRENT_USER.id;
+        const knownContact = CONTACTS_DIRECTORY.find(c => c.id === partnerId);
+        if (!knownContact?.name || knownContact.name === 'Người dùng') {
+            await resolveConversationProfile(partnerId);
+            if (CURRENT_USER.id !== ownerId) return;
+        } else {
+            resolveConversationProfile(partnerId);
+        }
         const contact = CONTACTS_DIRECTORY.find(c => c.id === partnerId) || {
             id: partnerId, name: 'Người dùng', avatar: ''
         };
