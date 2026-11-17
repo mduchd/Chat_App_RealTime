@@ -42,12 +42,6 @@
                 </p>
             </div>
 
-            <!-- Khung thông báo lỗi / thành công dùng chung cho màn hình Auth -->
-            <div id="authAlertBox" class="auth-alert-banner d-none" role="alert">
-                <i class="fa-solid fa-circle-exclamation auth-alert-icon me-2"></i>
-                <span id="authAlertText"></span>
-            </div>
-
             <!-- TAB ĐIỀU HƯỚNG CHÍNH: CHỈ 2 PHẦN ĐĂNG NHẬP & ĐĂNG KÝ -->
             <div class="auth-main-tabs" role="tablist">
                 <button type="button" class="auth-tab-btn active" id="tabBtnLogin" data-auth-tab="login" onclick="setAuthTab('login')">
@@ -913,6 +907,24 @@
     <!-- =====================================================================
          7. TOAST THÔNG BÁO GÓC MÀN HÌNH
          ===================================================================== -->
+    <dialog id="authPopup" class="auth-popup" aria-labelledby="authPopupTitle" aria-describedby="authPopupText">
+        <div class="auth-popup-icon" id="authPopupIcon" aria-hidden="true"></div>
+        <h2 id="authPopupTitle"></h2>
+        <p id="authPopupText"></p>
+        <form method="dialog"><button class="btn-cs-primary" type="submit">Đã hiểu</button></form>
+    </dialog>
+
+    <dialog id="renamePopup" class="auth-popup rename-popup" aria-labelledby="renamePopupLabel">
+        <form id="renamePopupForm">
+            <label id="renamePopupLabel" for="renamePopupInput"></label>
+            <input id="renamePopupInput" class="form-control" type="text" required>
+            <div class="rename-popup-actions">
+                <button type="button" class="btn btn-light" onclick="document.getElementById('renamePopup').close()">Hủy</button>
+                <button type="submit" class="btn-cs-primary">Lưu</button>
+            </div>
+        </form>
+    </dialog>
+
     <div id="toastContainer" class="chat-toast-container"></div>
 
     <!-- =====================================================================
