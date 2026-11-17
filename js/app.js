@@ -626,9 +626,9 @@ function subscribeToRoomTopic(roomId) {
  * Hàm gửi tin nhắn qua WebSocket STOMP tới `/app/chat.send`
  * kèm payload JSON gồm: { conversationId, content, timestamp }
  */
-function sendChatMessage(conversationId, content, extraOptions = {}) {
+function sendChatMessage(conversationId, content) {
     const trimmedContent = content.trim();
-    if (!trimmedContent && !extraOptions.imageUrl) {
+    if (!trimmedContent) {
         return;
     }
 
@@ -640,7 +640,7 @@ function sendChatMessage(conversationId, content, extraOptions = {}) {
         return false;
     }
 
-    if (conv.type === 'DIRECT' && !extraOptions.imageUrl) {
+    if (conv.type === 'DIRECT') {
         const recipient = conv.participants?.find(id => id !== CURRENT_USER.id);
         if (!recipient) {
             showToast('Không xác định được người nhận.', 'fa-triangle-exclamation');
@@ -660,7 +660,7 @@ function sendChatMessage(conversationId, content, extraOptions = {}) {
         senderId: CURRENT_USER.id,
         senderName: CURRENT_USER.name,
         senderAvatar: CURRENT_USER.avatar,
-        content: trimmedContent || '📷 Đã gửi một hình ảnh',
+        content: trimmedContent,
         timestamp: new Date().toISOString()
     };
 
@@ -672,7 +672,6 @@ function sendChatMessage(conversationId, content, extraOptions = {}) {
         senderName: CURRENT_USER.name,
         senderAvatar: CURRENT_USER.avatar,
         content: trimmedContent,
-        imageUrl: extraOptions.imageUrl || null,
         replyTo: replyingToMessage
             ? {
                 senderName: replyingToMessage.senderName,
@@ -3286,48 +3285,6 @@ document.addEventListener('DOMContentLoaded', () => {
             syncComposerButtons();
             messageInput.focus();
         });
-    });
-
-    // Gửi hình ảnh thật vào khung chat
-    const imageInput = document.getElementById('imageAttachmentInput');
-    document.getElementById('btnSendImage').addEventListener('click', () => {
-        imageInput.click();
-    });
-    imageInput.addEventListener('change', (e) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-            const conv = getConversationById(activeConversationId);
-            if (conv) {
-                conv.sharedFiles = conv.sharedFiles || [];
-                conv.sharedFiles.unshift(file.name);
-                updateActiveChatHeaderAndDrawer(conv);
-            }
-            sendChatMessage(activeConversationId, '', { imageUrl: ev.target.result });
-        };
-        reader.readAsDataURL(file);
-        imageInput.value = '';
-    });
-
-    // Đính kèm tệp tài liệu
-    const fileInput = document.getElementById('fileAttachmentInput');
-    document.getElementById('btnAttachFile').addEventListener('click', () => {
-        fileInput.click();
-    });
-    fileInput.addEventListener('change', (e) => {
-        const file = e.target.files?.[0];
-        if (file) {
-            const conv = getConversationById(activeConversationId);
-            if (conv) {
-                conv.sharedFiles = conv.sharedFiles || [];
-                conv.sharedFiles.unshift(file.name);
-                updateActiveChatHeaderAndDrawer(conv);
-            }
-            sendChatMessage(activeConversationId, `📎 Đã gửi tệp đính kèm: ${file.name}`);
-            fileInput.value = '';
-        }
     });
 
     // Đóng các menu/popover khi click ra ngoài
