@@ -346,7 +346,8 @@ async function chatApi(path, body) {
         if (response.status === 401 || response.status === 403 || response.redirected) {
             throw new Error('Phiên đăng nhập hoặc quyền truy cập không hợp lệ. Vui lòng đăng nhập lại.');
         }
-        throw new Error('Không lưu được dữ liệu lên server. Kiểm tra kết nối và thử lại.');
+        const detail = await response.json().catch(() => null);
+        throw new Error(detail?.message || 'Không lưu được dữ liệu lên server. Kiểm tra kết nối và thử lại.');
     }
     return response.status === 204 || response.headers.get('content-length') === '0' ? null
         : await response.text().then(text => text ? JSON.parse(text) : null);
@@ -428,7 +429,7 @@ function persistAndSyncConversations(eventType = 'SYNC_STATE') {
             if (changedFields.unreadCount === 0 && conv.messages?.length) changedFields.readThrough = conv.messages.at(-1).id;
             const oldMessages = new Map((previous?.messages || []).map(m => [m.id, JSON.stringify(m)]));
             const messages = conv.legacyReadOnly ? [] : (conv.messages || []).filter(m => oldMessages.get(m.id) !== JSON.stringify(m)
-                && (oldMessages.has(m.id) || m.senderId === CURRENT_USER.id));
+                && !m.legacyMessage && (oldMessages.has(m.id) || m.senderId === CURRENT_USER.id));
             const memberChanged = !conv.legacyReadOnly && JSON.stringify(conv.members) !== JSON.stringify(previous?.members);
             if (!previous || Object.keys(changedFields).length || messages.length || memberChanged) {
                 const change = { id: conv.id, type: conv.type, name: conv.name, participants: conv.participants, fields: changedFields, messages };
@@ -667,8 +668,10 @@ async function sendChatMessage(conversationId, content) {
         return false;
     }
     if (conv.legacyReadOnly) {
-        showToast('Đây là lịch sử đã nhập. Hãy mở cuộc trò chuyện mới với tài khoản thật để tiếp tục.', 'fa-circle-info');
-        return false;
+        try {
+            const liveId = await resumeLegacyConversation(conv);
+            return liveId ? await sendChatMessage(liveId, content) : false;
+        } catch (error) { showToast(error.message, 'fa-triangle-exclamation', 7000); return false; }
     }
 
     const payload = {
@@ -993,7 +996,7 @@ function toggleMessageReaction(messageId, emoji) {
     if (!conv) return;
 
     const msg = conv.messages.find((m) => m.id === messageId);
-    if (!msg || msg.unsent || conv.legacyReadOnly) return;
+    if (!msg || msg.unsent || conv.legacyReadOnly || msg.legacyMessage) return;
 
     msg.reaction = msg.reaction === emoji ? null : emoji;
     persistAndSyncConversations('REACTION_UPDATED');
@@ -1025,7 +1028,7 @@ function unsendMessage(messageId) {
     if (!conv) return;
 
     const msg = conv.messages.find((m) => m.id === messageId);
-    if (!msg || conv.legacyReadOnly || msg.senderId !== CURRENT_USER.id) return;
+    if (!msg || conv.legacyReadOnly || msg.legacyMessage || msg.senderId !== CURRENT_USER.id) return;
 
     msg.unsent = true;
     msg.content = `${msg.senderName} đã thu hồi một tin nhắn`;
@@ -1779,6 +1782,26 @@ function renderConversationList() {
     });
 }
 
+const continuingLegacyConversations = new Map();
+function resumeLegacyConversation(conv) {
+    if (continuingLegacyConversations.has(conv.id)) return continuingLegacyConversations.get(conv.id);
+    const owner = CURRENT_USER.id;
+    const task = (async () => {
+        const result = await chatApi('/continue', { conversationId: conv.id });
+        if (CURRENT_USER.id !== owner) return null;
+        if (await refreshServerState() === false) await refreshServerState();
+        if (!getConversationById(result.conversationId)) await refreshServerState();
+        if (!getConversationById(result.conversationId)) throw new Error('Chưa tải được cuộc trò chuyện. Vui lòng thử lại.');
+        if (activeConversationId === conv.id || activeConversationId === null) {
+            setConversationFilter('all'); selectConversation(result.conversationId);
+        }
+        return result.conversationId;
+    })();
+    continuingLegacyConversations.set(conv.id, task);
+    task.finally(() => continuingLegacyConversations.delete(conv.id)).catch(() => {});
+    return task;
+}
+
 function selectConversation(conversationId) {
     activeConversationId = conversationId;
     cancelReplyMessage();
@@ -1797,6 +1820,9 @@ function selectConversation(conversationId) {
         return;
     }
 
+    if (conv.legacyReadOnly) {
+        void resumeLegacyConversation(conv).catch(error => showToast(error.message, 'fa-triangle-exclamation', 7000));
+    }
     if (!document.hidden && conv.unreadCount) {
         conv.unreadCount = 0;
         persistAndSyncConversations();
@@ -1861,7 +1887,7 @@ function updateActiveChatHeaderAndDrawer(conv) {
     }
 
     document.getElementById('blockedBanner').classList.toggle('d-none', !conv.blocked);
-    document.getElementById('chatInputFooter').classList.toggle('d-none', conv.blocked || conv.legacyReadOnly);
+    document.getElementById('chatInputFooter').classList.toggle('d-none', conv.blocked);
 
     document.getElementById('drawerAvatar').innerHTML = avatarHtml;
     document.getElementById('drawerName').textContent = displayName;

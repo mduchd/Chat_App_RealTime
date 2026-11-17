@@ -95,6 +95,19 @@ public class ChatStorageService {
         }
         var imports=db.query("SELECT payload FROM legacy_chat_imports WHERE user_id=? ORDER BY created_at",(r,n)->object(r.getString(1)),me);
         for(var archive:imports) for(var old:list(archive.get("conversations"))) {
+            String linked=text(old.get("linkedConversation"));
+            if(!linked.isBlank()) {
+                var live=conversations.stream().filter(c->linked.equals(c.get("id"))).findFirst();
+                if(live.isPresent()) {
+                    List<Map<String,Object>> combined=new ArrayList<>();
+                    for(var historical:list(old.get("messages"))) {
+                        historical.put("id","history-"+UUID.nameUUIDFromBytes((archive.get("sourceId")+":"+historical.get("id")).getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+                        historical.put("legacyMessage",true);combined.add(historical);
+                    }
+                    combined.addAll(list(live.get().get("messages")));live.get().put("messages",combined);
+                }
+                continue;
+            }
             var legacyPrefs=map(old.remove("legacyPreferences"));
             if (Boolean.TRUE.equals(legacyPrefs.get("hidden"))) continue;
             old.put("id","legacy-"+text(archive.get("sourceId"))+"-"+text(old.get("id")));
@@ -239,6 +252,57 @@ public class ChatStorageService {
         }
         if(!found) throw denied();archive.put("conversations",conversations);
         db.update("UPDATE legacy_chat_imports SET payload=? WHERE user_id=? AND source_id=?",encode(archive),me,source);
+    }
+    private Optional<Long> legacyAccount(String external,List<Map<String,Object>> contacts) {
+        if(external.isBlank()) return Optional.empty();
+        var actual=identity.lookup(external);
+        if(actual.isPresent()) return Optional.of(actual.get().getId());
+        for(var contact:contacts) if(external.equals(text(contact.get("id")))) {
+            String email=text(contact.get("email"));
+            if(!email.isBlank()) {
+                var matches=db.query("SELECT id FROM users WHERE email=?",(r,n)->r.getLong(1),email);
+                if(matches.size()==1) return Optional.of(matches.get(0));
+            }
+        }
+        return Optional.empty();
+    }
+    @Transactional
+    public Map<String,String> continueLegacy(Principal principal,String key) {
+        long me=identity.id(principal);
+        if(key.length()<44 || !key.startsWith("legacy-")) throw denied();
+        String source=key.substring(7,43);
+        var rows=db.query("SELECT payload FROM legacy_chat_imports WHERE user_id=? AND source_id=? FOR UPDATE",(r,n)->object(r.getString(1)),me,source);
+        if(rows.isEmpty()) throw denied();
+        var archive=rows.get(0);var oldConversations=list(archive.get("conversations"));
+        var old=oldConversations.stream().filter(c->key.equals("legacy-"+source+"-"+text(c.get("id")))).findFirst().orElseThrow(this::denied);
+        String linked=text(old.get("linkedConversation"));
+        if(!linked.isBlank()) { membership(me,linked);return Map.of("conversationId",linked); }
+        var contacts=new ArrayList<>(list(archive.get("contacts")));contacts.addAll(list(old.get("members")));
+        Set<String> identifiers=new LinkedHashSet<>();
+        for(Object id:(List<?>)old.getOrDefault("participants",List.of())) identifiers.add(text(id));
+        for(var member:list(old.get("members"))) identifiers.add(text(member.get("id")));
+        if(old.get("contactId")!=null) identifiers.add(text(old.get("contactId")));
+        if(!"GROUP".equals(old.get("type")) && identifiers.isEmpty()) {
+            for(var message:list(old.get("messages"))) identifiers.add(text(message.get("senderId")));
+        }
+        Set<Long> members=new LinkedHashSet<>();members.add(me);
+        for(String id:identifiers) {
+            var resolved=legacyAccount(id,contacts);
+            if(resolved.isPresent()) members.add(resolved.get());
+            else if(!id.isBlank()) throw new ResponseStatusException(HttpStatus.CONFLICT,"Không tìm thấy tài khoản thật của thành viên cũ. Hãy chọn người nhận từ danh sách bạn bè.");
+        }
+        boolean group="GROUP".equals(old.get("type"));
+        if(members.size()<2 || (!group && members.size()!=2)) throw new ResponseStatusException(HttpStatus.CONFLICT,"Không xác định được người nhận của lịch sử cũ. Hãy mở chat từ danh sách bạn bè.");
+        var participants=members.stream().map(id->text(account(id).get("id"))).sorted().toList();
+        linked=group?"room-"+UUID.nameUUIDFromBytes((old.get("id")+":"+String.join(",",participants)).getBytes(java.nio.charset.StandardCharsets.UTF_8)):"conv-"+String.join("-",participants);
+        Map<String,Object> command=new LinkedHashMap<>();command.put("id",linked);command.put("type",group?"GROUP":"DIRECT");
+        command.put("name",text(old.get("name")));command.put("participants",participants);
+        if(group && db.queryForObject("SELECT COUNT(*) FROM conversations WHERE external_id=?",Long.class,linked)==0) command.put("members",members.stream().map(this::account).toList());
+        command.put("fields",Map.of("archived",false,"hidden",false));
+        syncConversation(me,command);
+        old.put("linkedConversation",linked);archive.put("conversations",oldConversations);
+        db.update("UPDATE legacy_chat_imports SET payload=? WHERE user_id=? AND source_id=?",encode(archive),me,source);
+        return Map.of("conversationId",linked);
     }
     private Object removeCredentials(Object value) {
         if(value instanceof Map<?,?> values) {

@@ -31,7 +31,7 @@ All durable chat data is stored in MySQL. The browser holds the current UI state
 
 After authenticating, the client reads only the current account's old conversation and notification keys. It uploads an idempotent archive to `/api/chat/import`. The account-specific keys are removed only after a successful response. Another account's history remains untouched until that account signs in and imports it.
 
-Historical client messages are preserved as private, read-only archives in the Archived view. They are not inserted as authenticated messages supposedly sent by another account. Real new chats use the normalized conversation/member/message tables. Repeating an import after a lost response does not create a duplicate archive.
+Opening imported history links it to a live conversation using verified account IDs or exact registered emails. The old messages remain visible privately alongside new messages, and the composer sends new messages through normalized conversation/member/message tables. Historical messages remain immutable and are not inserted as authenticated messages supposedly sent by another account. Linking is idempotent and checked against account ownership and membership. Repeating an import after a lost response does not create a duplicate archive.
 
 There are no `localStorage.setItem` or `sessionStorage.setItem` calls. Browser storage is accessed exclusively by this one-time legacy importer and its cleanup. Pending writes, search text, modal state, typing indicators and the currently selected conversation are temporary memory state.
 

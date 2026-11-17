@@ -76,6 +76,29 @@ class ChatStorageIntegrationTest {
   User a=user(true),b=user(false);String key=UUID.randomUUID().toString();assertTrue(storage.claimDesktop(auth(a),key,"claim","browser-one"));assertFalse(storage.claimDesktop(auth(a),key,"claim","browser-one"));
   storage.claimDesktop(auth(a),key,"release","browser-one");assertTrue(storage.claimDesktop(auth(a),key,"claim","browser-one"));storage.claimDesktop(auth(a),key,"complete","browser-one");assertFalse(storage.claimDesktop(auth(a),key,"claim","browser-one"));assertTrue(storage.claimDesktop(auth(b),key,"claim","browser-one"));assertTrue(storage.claimDesktop(auth(a),key,"claim","browser-two"));
  }
+ @Test void importedDirectChatCanContinueWithHistoryPreservedAndNewMessagesShared(){
+  User a=user(true),b=user(false),outsider=user(false);String source=UUID.randomUUID().toString();
+  var old=Map.of("id","old-direct","type","DIRECT","name","Old friend","participants",List.of(ext(a),ext(b)),"messages",List.of(msg(b,"historic-id")));
+  storage.importLegacy(auth(a),Map.of("sourceId",source,"conversations",List.of(old)));
+  String archive="legacy-"+source+"-old-direct";
+  assertThrows(ResponseStatusException.class,()->storage.continueLegacy(auth(outsider),archive));
+  String live=storage.continueLegacy(auth(a),archive).get("conversationId");
+  assertEquals(direct(a,b),live);assertEquals(live,storage.continueLegacy(auth(a),archive).get("conversationId"));
+  assertEquals(1,convs(a).size());assertNotEquals(true,convs(a).get(0).get("legacyReadOnly"));
+  assertEquals(true,msgs(convs(a).get(0)).get(0).get("legacyMessage"));assertTrue(msgs(convs(b).get(0)).isEmpty());
+  String mid=UUID.randomUUID().toString();var change=Map.of("id",live,"messages",List.of(msg(a,mid)));storage.sync(auth(a),Map.of("conversations",List.of(change)));
+  assertEquals(2,msgs(convs(a).get(0)).size());assertEquals(1,msgs(convs(b).get(0)).size());assertEquals(mid,msgs(convs(b).get(0)).get(0).get("id"));
+  assertEquals(0L,db.queryForObject("SELECT COUNT(*) FROM messages WHERE external_id='historic-id'",Long.class));
+ }
+ @Test void importedGroupCanContinueForRealMembers(){
+  User a=user(true),b=user(false);String source=UUID.randomUUID().toString();
+  var old=Map.of("id","old-group","type","GROUP","name","Original group","members",List.of(Map.of("id",ext(a)),Map.of("id",ext(b))),"messages",List.of(msg(a,"old-group-message")));
+  storage.importLegacy(auth(a),Map.of("sourceId",source,"conversations",List.of(old)));
+  String live=storage.continueLegacy(auth(a),"legacy-"+source+"-old-group").get("conversationId");
+  assertEquals("GROUP",convs(a).get(0).get("type"));assertEquals("Original group",convs(b).get(0).get("name"));
+  assertEquals(live,storage.continueLegacy(auth(a),"legacy-"+source+"-old-group").get("conversationId"));
+  assertEquals(1,convs(a).size());
+ }
  @Test void endpointsRejectAnonymousAndUntrustedRequests() throws Exception {
   mvc.perform(get("/api/chat/snapshot")).andExpect(status().is3xxRedirection());
   mvc.perform(post("/api/chat/sync").header("Origin","https://untrusted.invalid").contentType("application/json").content("{}")).andExpect(status().isForbidden());

@@ -56,3 +56,15 @@ test('new writes send only changed conversation data without deleting unseen ser
  assert.deepEqual(JSON.parse(JSON.stringify(requests[0].body.conversations[0].fields)),{muted:true});
  assert.equal(requests[0].body.conversations[0].messages.length,0);
 });
+test('opening imported history links once and selects the live chat for continued sending',async()=>{
+ const continuation=source.slice(source.indexOf('const continuingLegacyConversations ='),source.indexOf('function selectConversation('));
+ const calls=[],selections=[];let live=null;
+ const context={CURRENT_USER:{id:'me'},activeConversationId:'legacy-old',
+  chatApi:async(path,body)=>{calls.push({path,body});return {conversationId:'conv-me-other'};},
+  refreshServerState:async()=>{live={id:'conv-me-other',messages:[{content:'old',legacyMessage:true}]};},
+  getConversationById:id=>id===live?.id?live:null,setConversationFilter:filter=>selections.push(filter),selectConversation:id=>selections.push(id)
+ };
+ vm.createContext(context);vm.runInContext(continuation,context);
+ const results=await Promise.all([context.resumeLegacyConversation({id:'legacy-old'}),context.resumeLegacyConversation({id:'legacy-old'})]);
+ assert.deepEqual(results,['conv-me-other','conv-me-other']);assert.equal(calls.length,1);assert.equal(calls[0].path,'/continue');assert.deepEqual(selections,['all','conv-me-other']);assert.equal(live.messages[0].content,'old');
+});
