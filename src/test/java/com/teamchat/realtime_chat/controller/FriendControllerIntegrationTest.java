@@ -37,22 +37,71 @@ class FriendControllerIntegrationTest {
     }
 
     @Test
-    void discoverFindsPartialNamesAndExcludesRelationshipsFromSuggestions() {
-        var alice = user("discover-alice");
-        user("discover-bob");
-        user("discover-carol");
-        jdbc.update("UPDATE users SET display_name=? WHERE google_sub=?", "Nguyễn Văn Bình", "discover-bob");
-        jdbc.update("UPDATE users SET display_name=? WHERE google_sub=?", "Trần Lan", "discover-carol");
-        assertEquals("discover-bob", friends.discover(alice, "nguyen van").get(0).id());
-        assertEquals("discover-bob", friends.discover(alice, "Bì").get(0).id());
-        assertEquals("discover-bob", friends.discover(alice, "discover-bob@example.com").get(0).id());
-        assertTrue(friends.discover(alice, "%").isEmpty());
-        assertTrue(friends.discover(alice, "").stream().anyMatch(c -> c.id().equals("discover-bob")));
-        friends.send(alice, new FriendController.SendRequest("discover-bob"));
-        assertTrue(friends.discover(alice, "").stream().noneMatch(c -> c.id().equals("discover-bob")));
-        assertEquals("discover-bob", friends.discover(alice, "Bình").get(0).id());
-        assertTrue(friends.discover(alice, "discover-alice@example.com").isEmpty());
-    }
+ 
+void discoverFindsPartialNamesAndExcludesRelationshipsFromSuggestions() {
+    var alice = user("discover-alice");
+    user("discover-bob");
+    user("discover-carol");
+
+    jdbc.update(
+        "UPDATE users SET display_name=? WHERE google_sub=?",
+        "Nguyễn Văn DiscoverBob",
+        "discover-bob"
+    );
+
+    jdbc.update(
+        "UPDATE users SET display_name=? WHERE google_sub=?",
+        "Trần Lan DiscoverCarol",
+        "discover-carol"
+    );
+
+    // Tìm kiếm không dấu
+    assertEquals(
+        "discover-bob",
+        friends.discover(alice, "nguyen van discoverbob").get(0).id()
+    );
+
+    // Tìm kiếm có dấu
+    assertEquals(
+        "discover-bob",
+        friends.discover(alice, "Nguyễn Văn DiscoverBob").get(0).id()
+    );
+
+    // Tìm kiếm theo email
+    assertEquals(
+        "discover-bob",
+        friends.discover(alice, "discover-bob@example.com").get(0).id()
+    );
+
+    // Không cho phép ký tự % làm lộ toàn bộ danh sách
+    assertTrue(friends.discover(alice, "%").isEmpty());
+
+    // Tài khoản chưa kết bạn vẫn xuất hiện trong gợi ý
+    assertTrue(
+        friends.discover(alice, "").stream()
+            .anyMatch(c -> c.id().equals("discover-bob"))
+    );
+
+    // Gửi lời mời kết bạn
+    friends.send(alice, new FriendController.SendRequest("discover-bob"));
+
+    // Đã gửi lời mời thì không còn trong gợi ý
+    assertTrue(
+        friends.discover(alice, "").stream()
+            .noneMatch(c -> c.id().equals("discover-bob"))
+    );
+
+    // Vẫn tìm kiếm được bằng tên sau khi gửi lời mời
+    assertEquals(
+        "discover-bob",
+        friends.discover(alice, "DiscoverBob").get(0).id()
+    );
+
+    // Không tìm thấy chính tài khoản của mình
+    assertTrue(
+        friends.discover(alice, "discover-alice@example.com").isEmpty()
+    );
+}
 
     @Test
     void requestsRequireRecipientAndBothUsersSeeTheFriendship() {
