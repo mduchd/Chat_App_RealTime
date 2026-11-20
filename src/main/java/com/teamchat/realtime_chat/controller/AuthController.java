@@ -80,6 +80,15 @@ public class AuthController {
             response.put("message", "Mã xác thực OTP đã được gửi thẳng vào hộp thư Gmail: " + cleanEmail + ". Vui lòng kiểm tra hộp thư đến (và mục Thư rác/Spam)!");
             return ResponseEntity.ok(response);
         } else {
+            // Chế độ dự phòng khi máy chủ Local chưa cấu hình MAIL_USERNAME / MAIL_PASSWORD:
+            // Vẫn cho phép nhận mã OTP để test đăng ký / đổi mật khẩu mượt mà
+            String devOtp = otpService.getLastOtp(cleanEmail, cleanPurpose);
+            if (devOtp != null) {
+                response.put("success", true);
+                response.put("devOtp", devOtp);
+                response.put("message", "Mã OTP đã được tạo: " + devOtp + "\n(Lưu ý: Do server chưa cấu hình Gmail SMTP nên mã OTP được hiển thị trực tiếp để bạn kiểm thử).");
+                return ResponseEntity.ok(response);
+            }
             response.put("success", false);
             response.put("message", "Không thể gửi email OTP qua máy chủ Gmail lúc này. Vui lòng kiểm tra cấu hình MAIL_USERNAME / MAIL_PASSWORD trên server hoặc thử lại sau!");
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);

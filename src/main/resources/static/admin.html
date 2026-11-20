@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CHATSPACE — Quản Trị Hệ Thống (Admin)</title>
+
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Bootstrap 5.3 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- FontAwesome 6 -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" rel="stylesheet">
+    <link rel="icon" type="image/svg+xml" href="logo.svg">
+
+    <style>
+        :root {
+            --admin-dark: #16263d;
+            --admin-primary: #1d72b8;
+            --admin-bg: #e8f1f8;
+            --admin-card: #ffffff;
+            --admin-border: #e2e8f0;
+            --admin-text: #1e293b;
+            --admin-muted: #64748b;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background-color: var(--admin-bg);
+            color: var(--admin-text);
+            margin: 0;
+            padding: 0;
+        }
+
+        .admin-topbar {
+            background-color: var(--admin-dark);
+            color: #ffffff;
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 24px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
+
+        .admin-brand {
+            font-weight: 700;
+            font-size: 1.15rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            letter-spacing: 0.5px;
+        }
+
+        .admin-brand .badge-admin {
+            background-color: #ef4444;
+            font-size: 0.7rem;
+            padding: 3px 8px;
+            border-radius: 6px;
+            font-weight: 600;
+        }
+
+        .admin-nav-tabs {
+            background: #ffffff;
+            border-bottom: 1px solid var(--admin-border);
+            padding: 0 24px;
+            display: flex;
+            gap: 8px;
+        }
+
+        .admin-tab-btn {
+            border: none;
+            background: transparent;
+            padding: 14px 18px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            color: var(--admin-muted);
+            border-bottom: 3px solid transparent;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .admin-tab-btn:hover {
+            color: var(--admin-primary);
+        }
+
+        .admin-tab-btn.active {
+            color: var(--admin-primary);
+            border-bottom-color: var(--admin-primary);
+        }
+
+        .admin-container {
+            max-width: 1240px;
+            margin: 24px auto;
+            padding: 0 16px;
+        }
+
+        .stat-card {
+            background: var(--admin-card);
+            border-radius: 12px;
+            padding: 20px;
+            border: 1px solid var(--admin-border);
+            box-shadow: 0 2px 6px rgba(0,0,0,0.03);
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .stat-icon {
+            width: 52px;
+            height: 52px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+        }
+
+        .stat-icon.users { background: #e0f2fe; color: #0284c7; }
+        .stat-icon.groups { background: #fef3c7; color: #d97706; }
+        .stat-icon.messages { background: #dcfce7; color: #16a34a; }
+        .stat-icon.status { background: #f3e8ff; color: #9333ea; }
+
+        .stat-num {
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin: 0;
+            color: var(--admin-text);
+        }
+
+        .stat-label {
+            font-size: 0.85rem;
+            color: var(--admin-muted);
+            margin: 0;
+        }
+
+        .admin-table-card {
+            background: var(--admin-card);
+            border-radius: 12px;
+            border: 1px solid var(--admin-border);
+            box-shadow: 0 2px 6px rgba(0,0,0,0.03);
+            overflow: hidden;
+            margin-top: 20px;
+        }
+
+        .admin-table-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--admin-border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .admin-search-input {
+            border: 1px solid var(--admin-border);
+            border-radius: 8px;
+            padding: 6px 14px;
+            font-size: 0.9rem;
+            width: 280px;
+            outline: none;
+        }
+
+        .admin-search-input:focus {
+            border-color: var(--admin-primary);
+        }
+
+        .table thead th {
+            background-color: #f8fafc;
+            color: var(--admin-muted);
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--admin-border);
+        }
+
+        .table tbody td {
+            padding: 14px 16px;
+            vertical-align: middle;
+            font-size: 0.9rem;
+            border-bottom: 1px solid #f1f5f9;
+        }
+
+        .user-avatar-circle {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background-color: var(--admin-primary);
+            color: #ffffff;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 0.85rem;
+        }
+
+        .badge-pill-role {
+            font-size: 0.75rem;
+            padding: 4px 10px;
+            border-radius: 999px;
+            font-weight: 600;
+        }
+
+        .btn-action-delete {
+            background: #fee2e2;
+            color: #dc2626;
+            border: none;
+            border-radius: 6px;
+            padding: 6px 12px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-action-delete:hover {
+            background: #fca5a5;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- TOPBAR -->
+    <header class="admin-topbar">
+        <div class="admin-brand">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+            </svg>
+            <span>CHATSPACE</span>
+            <span class="badge-admin">ADMIN PORTAL</span>
+        </div>
+
+        <div class="d-flex align-items-center gap-3">
+            <span class="badge bg-success-subtle text-success px-3 py-2 rounded-pill font-monospace" id="serverTimeText">
+                <i class="fa-solid fa-circle me-1" style="font-size: 0.6rem;"></i> Server Online
+            </span>
+            <button class="btn btn-sm btn-outline-light" onclick="loadAllData()">
+                <i class="fa-solid fa-arrows-rotate me-1"></i> Làm mới
+            </button>
+            <a href="index.html" class="btn btn-sm btn-light fw-semibold">
+                <i class="fa-solid fa-arrow-left me-1"></i> Vào trang Chat
+            </a>
+        </div>
+    </header>
+
+    <!-- NAVIGATION TABS -->
+    <div class="admin-nav-tabs">
+        <button class="admin-tab-btn active" onclick="switchTab('tabOverview', this)">
+            <i class="fa-solid fa-chart-pie"></i> Tổng quan
+        </button>
+        <button class="admin-tab-btn" onclick="switchTab('tabUsers', this)">
+            <i class="fa-solid fa-users"></i> Quản lý người dùng (<span id="tabCountUsers">0</span>)
+        </button>
+        <button class="admin-tab-btn" onclick="switchTab('tabGroups', this)">
+            <i class="fa-solid fa-comments"></i> Hội thoại & Nhóm (<span id="tabCountGroups">0</span>)
+        </button>
+        <button class="admin-tab-btn" onclick="switchTab('tabMessages', this)">
+            <i class="fa-solid fa-message"></i> Nhật ký tin nhắn
+        </button>
+    </div>
+
+    <!-- MAIN CONTAINER -->
+    <div class="admin-container">
+
+        <!-- ==================== TAB 1: TỔNG QUAN ==================== -->
+        <div id="tabOverview">
+            <!-- 4 Metric Cards -->
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <div class="stat-card">
+                        <div class="stat-icon users"><i class="fa-solid fa-users"></i></div>
+                        <div>
+                            <h3 class="stat-num" id="statUsers">0</h3>
+                            <p class="stat-label">Tổng người dùng</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="stat-card">
+                        <div class="stat-icon groups"><i class="fa-solid fa-user-group"></i></div>
+                        <div>
+                            <h3 class="stat-num" id="statGroups">0</h3>
+                            <p class="stat-label">Nhóm trò chuyện</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="stat-card">
+                        <div class="stat-icon messages"><i class="fa-solid fa-comments"></i></div>
+                        <div>
+                            <h3 class="stat-num" id="statMessages">0</h3>
+                            <p class="stat-label">Tổng tin nhắn đã gửi</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="stat-card">
+                        <div class="stat-icon status"><i class="fa-solid fa-server"></i></div>
+                        <div>
+                            <h3 class="stat-num text-success" style="font-size: 1.4rem;">HOẠT ĐỘNG</h3>
+                            <p class="stat-label" id="statServerTime">MySQL & STOMP Online</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bảng tóm tắt người dùng mới -->
+            <div class="admin-table-card">
+                <div class="admin-table-header">
+                    <h5 class="mb-0 fw-bold"><i class="fa-solid fa-clock-rotate-left me-2 text-primary"></i>Người dùng đăng ký gần đây</h5>
+                    <button class="btn btn-sm btn-link text-decoration-none" onclick="document.querySelectorAll('.admin-tab-btn')[1].click()">Xem tất cả</button>
+                </div>
+                <div class="table-responsive">
+                    <table class="table mb-0">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Người dùng</th>
+                                <th>Gmail</th>
+                                <th>Số điện thoại</th>
+                                <th>Đăng nhập gần nhất</th>
+                            </tr>
+                        </thead>
+                        <tbody id="overviewUsersTable">
+                            <tr><td colspan="5" class="text-center text-muted py-4">Đang tải dữ liệu...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- ==================== TAB 2: QUẢN LÝ NGƯỜI DÙNG ==================== -->
+        <div id="tabUsers" class="d-none">
+            <div class="admin-table-card mt-0">
+                <div class="admin-table-header">
+                    <h5 class="mb-0 fw-bold"><i class="fa-solid fa-users-gear me-2 text-primary"></i>Danh sách tài khoản người dùng</h5>
+                    <input type="text" id="searchUserField" class="admin-search-input" placeholder="Tìm theo tên, email, SĐT..." oninput="filterUsersTable()">
+                </div>
+                <div class="table-responsive">
+                    <table class="table mb-0">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Họ & Tên</th>
+                                <th>Địa chỉ Gmail</th>
+                                <th>Số điện thoại</th>
+                                <th>Ngày tạo tài khoản</th>
+                                <th>Đăng nhập cuối</th>
+                                <th class="text-end">Hành động</th>
+                            </tr>
+                        </thead>
+                        <tbody id="fullUsersTable"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- ==================== TAB 3: HỘI THOẠI & NHÓM CHAT ==================== -->
+        <div id="tabGroups" class="d-none">
+            <div class="admin-table-card mt-0">
+                <div class="admin-table-header">
+                    <h5 class="mb-0 fw-bold"><i class="fa-solid fa-comments me-2 text-primary"></i>Quản lý danh sách Hội thoại & Nhóm chat</h5>
+                    <input type="text" id="searchGroupField" class="admin-search-input" placeholder="Tìm tên nhóm..." oninput="filterGroupsTable()">
+                </div>
+                <div class="table-responsive">
+                    <table class="table mb-0">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Tên Hội thoại / Nhóm</th>
+                                <th>Loại</th>
+                                <th>Người tạo</th>
+                                <th>Thành viên</th>
+                                <th>Ngày tạo</th>
+                                <th class="text-end">Hành động</th>
+                            </tr>
+                        </thead>
+                        <tbody id="fullGroupsTable"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- ==================== TAB 4: NHẬT KÝ TIN NHẮN ==================== -->
+        <div id="tabMessages" class="d-none">
+            <div class="admin-table-card mt-0">
+                <div class="admin-table-header">
+                    <h5 class="mb-0 fw-bold"><i class="fa-solid fa-list-check me-2 text-primary"></i>50 tin nhắn mới nhất trong hệ thống</h5>
+                </div>
+                <div class="table-responsive">
+                    <table class="table mb-0">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Hội thoại</th>
+                                <th>Người gửi</th>
+                                <th>Nội dung tin nhắn</th>
+                                <th>Thời gian gửi</th>
+                            </tr>
+                        </thead>
+                        <tbody id="fullMessagesTable"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- JAVASCRIPT XỬ LÝ DỮ LIỆU ADMIN -->
+    <script>
+        let cachedUsers = [];
+        let cachedGroups = [];
+
+        function switchTab(tabId, btn) {
+            document.querySelectorAll('.admin-tab-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+
+            ['tabOverview', 'tabUsers', 'tabGroups', 'tabMessages'].forEach(id => {
+                document.getElementById(id).classList.toggle('d-none', id !== tabId);
+            });
+        }
+
+        async function loadAllData() {
+            try {
+                // 1. Stats
+                const statsRes = await fetch('/api/admin/stats');
+                const statsData = await statsRes.json();
+                if (statsData.success) {
+                    document.getElementById('statUsers').innerText = statsData.totalUsers;
+                    document.getElementById('statGroups').innerText = statsData.totalGroups;
+                    document.getElementById('statMessages').innerText = statsData.totalMessages;
+                    document.getElementById('statServerTime').innerText = 'Cập nhật lúc: ' + statsData.serverTime;
+                    document.getElementById('tabCountUsers').innerText = statsData.totalUsers;
+                    document.getElementById('tabCountGroups').innerText = statsData.totalConversations;
+                }
+
+                // 2. Users
+                const usersRes = await fetch('/api/admin/users');
+                const usersData = await usersRes.json();
+                if (usersData.success) {
+                    cachedUsers = usersData.users;
+                    renderUsersTable(cachedUsers);
+                    renderOverviewUsers(cachedUsers.slice(0, 5));
+                }
+
+                // 3. Groups / Conversations
+                const groupsRes = await fetch('/api/admin/conversations');
+                const groupsData = await groupsRes.json();
+                if (groupsData.success) {
+                    cachedGroups = groupsData.conversations;
+                    renderGroupsTable(cachedGroups);
+                }
+
+                // 4. Messages
+                const msgsRes = await fetch('/api/admin/messages');
+                const msgsData = await msgsRes.json();
+                if (msgsData.success) {
+                    renderMessagesTable(msgsData.messages);
+                }
+            } catch (err) {
+                console.error('Lỗi khi tải dữ liệu admin:', err);
+            }
+        }
+
+        function renderOverviewUsers(users) {
+            const tbody = document.getElementById('overviewUsersTable');
+            if (!users || users.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">Chưa có người dùng nào</td></tr>';
+                return;
+            }
+            tbody.innerHTML = users.map(u => `
+                <tr>
+                    <td><span class="text-muted fw-bold">#${u.id}</span></td>
+                    <td>
+                        <div class="d-flex align-items-center gap-2">
+                            <div class="user-avatar-circle">${escapeHtml(u.name.substring(0, 2).toUpperCase())}</div>
+                            <strong>${escapeHtml(u.name)}</strong>
+                        </div>
+                    </td>
+                    <td>${escapeHtml(u.email)}</td>
+                    <td>${escapeHtml(u.phone)}</td>
+                    <td class="text-muted">${escapeHtml(u.lastLoginAt)}</td>
+                </tr>
+            `).join('');
+        }
+
+        function renderUsersTable(users) {
+            const tbody = document.getElementById('fullUsersTable');
+            if (!users || users.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">Không tìm thấy người dùng</td></tr>';
+                return;
+            }
+            tbody.innerHTML = users.map(u => `
+                <tr>
+                    <td><span class="text-muted fw-bold">#${u.id}</span></td>
+                    <td>
+                        <div class="d-flex align-items-center gap-2">
+                            <div class="user-avatar-circle">${escapeHtml(u.name.substring(0, 2).toUpperCase())}</div>
+                            <strong>${escapeHtml(u.name)}</strong>
+                        </div>
+                    </td>
+                    <td>${escapeHtml(u.email)}</td>
+                    <td>${escapeHtml(u.phone)}</td>
+                    <td class="text-muted small">${escapeHtml(u.createdAt)}</td>
+                    <td class="text-muted small">${escapeHtml(u.lastLoginAt)}</td>
+                    <td class="text-end">
+                        <button class="btn-action-delete" onclick="deleteUser(${u.id}, '${escapeHtml(u.name)}')">
+                            <i class="fa-solid fa-trash me-1"></i> Xóa
+                        </button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function renderGroupsTable(groups) {
+            const tbody = document.getElementById('fullGroupsTable');
+            if (!groups || groups.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">Không tìm thấy hội thoại</td></tr>';
+                return;
+            }
+            tbody.innerHTML = groups.map(g => `
+                <tr>
+                    <td><span class="text-muted fw-bold">#${g.id}</span></td>
+                    <td><strong>${escapeHtml(g.name)}</strong></td>
+                    <td><span class="badge ${g.type === 'GROUP' ? 'bg-primary-subtle text-primary' : 'bg-secondary-subtle text-secondary'}">${g.type === 'GROUP' ? 'Nhóm chat' : 'Cá nhân'}</span></td>
+                    <td>${escapeHtml(g.createdByName)}</td>
+                    <td><span class="badge bg-light text-dark border">${g.memberCount} thành viên</span></td>
+                    <td class="text-muted small">${escapeHtml(g.createdAt)}</td>
+                    <td class="text-end">
+                        <button class="btn-action-delete" onclick="deleteConversation(${g.id}, '${escapeHtml(g.name)}')">
+                            <i class="fa-solid fa-trash me-1"></i> Xóa
+                        </button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function renderMessagesTable(messages) {
+            const tbody = document.getElementById('fullMessagesTable');
+            if (!messages || messages.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">Chưa có tin nhắn nào</td></tr>';
+                return;
+            }
+            tbody.innerHTML = messages.map(m => `
+                <tr>
+                    <td><span class="text-muted fw-bold">#${m.id}</span></td>
+                    <td><span class="badge bg-light text-dark border">${escapeHtml(m.conversationName)}</span></td>
+                    <td><strong>${escapeHtml(m.senderName)}</strong></td>
+                    <td>${escapeHtml(m.content)}</td>
+                    <td class="text-muted small">${escapeHtml(m.createdAt)}</td>
+                </tr>
+            `).join('');
+        }
+
+        function filterUsersTable() {
+            const q = document.getElementById('searchUserField').value.trim().toLowerCase();
+            const filtered = cachedUsers.filter(u =>
+                u.name.toLowerCase().includes(q) ||
+                u.email.toLowerCase().includes(q) ||
+                u.phone.includes(q)
+            );
+            renderUsersTable(filtered);
+        }
+
+        function filterGroupsTable() {
+            const q = document.getElementById('searchGroupField').value.trim().toLowerCase();
+            const filtered = cachedGroups.filter(g =>
+                g.name.toLowerCase().includes(q)
+            );
+            renderGroupsTable(filtered);
+        }
+
+        async function deleteUser(id, name) {
+            if (!confirm(`Bạn có chắc muốn xóa tài khoản "${name}" (#${id})? Dữ liệu không thể khôi phục.`)) return;
+            try {
+                const res = await fetch(`/api/admin/users/${id}`, { method: 'DELETE' });
+                const data = await res.json();
+                if (data.success) {
+                    alert('Đã xóa người dùng thành công!');
+                    loadAllData();
+                } else {
+                    alert(data.message || 'Lỗi khi xóa người dùng!');
+                }
+            } catch (err) {
+                alert('Lỗi kết nối máy chủ!');
+            }
+        }
+
+        async function deleteConversation(id, name) {
+            if (!confirm(`Bạn có chắc muốn xóa hội thoại "${name}" (#${id})? Toàn bộ tin nhắn sẽ bị xóa.`)) return;
+            try {
+                const res = await fetch(`/api/admin/conversations/${id}`, { method: 'DELETE' });
+                const data = await res.json();
+                if (data.success) {
+                    alert('Đã xóa hội thoại thành công!');
+                    loadAllData();
+                } else {
+                    alert(data.message || 'Lỗi khi xóa hội thoại!');
+                }
+            } catch (err) {
+                alert('Lỗi kết nối máy chủ!');
+            }
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        // Tự động tải dữ liệu khi trang tải xong
+        document.addEventListener('DOMContentLoaded', loadAllData);
+    </script>
+</body>
+</html>

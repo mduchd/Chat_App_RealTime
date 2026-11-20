@@ -71,10 +71,25 @@ public class OtpService {
         // Gửi qua EmailService
         boolean sent = emailService.sendOtpEmail(cleanEmail, otpCode, purposeDisplay);
         if (!sent) {
-            logger.warn("Không gửi được email qua SMTP Gmail cho {}. (Lưu ý: kiểm tra mật khẩu ứng dụng Gmail MAIL_PASSWORD)", cleanEmail);
+            logger.warn("===============================================================");
+            logger.warn(">>> [OTP TEST TRÊN LOCAL DEV] Gmail: {} | Mục đích: {} <<<", cleanEmail, cleanPurpose);
+            logger.warn(">>> MÃ XÁC THỰC OTP CỦA BẠN LÀ: [{}] (Hiệu lực 5 phút) <<<", otpCode);
+            logger.warn("===============================================================");
         }
 
         return sent;
+    }
+
+    /**
+     * Lấy mã OTP gần nhất đang còn hiệu lực (Phục vụ test khi chưa cấu hình Gmail SMTP)
+     */
+    public String getLastOtp(String email, String purpose) {
+        if (email == null) return null;
+        String cleanEmail = email.trim().toLowerCase();
+        String cleanPurpose = (purpose != null && !purpose.isBlank()) ? purpose.trim().toUpperCase() : "REGISTER";
+        String storageKey = cleanEmail + ":" + cleanPurpose;
+        OtpEntry entry = otpStorage.get(storageKey);
+        return (entry != null && !entry.isExpired()) ? entry.code : null;
     }
 
     /**
