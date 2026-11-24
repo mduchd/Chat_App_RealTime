@@ -169,8 +169,14 @@ public class MainFrame extends JFrame {
                     parseSnapshot(snapshot);
                 } catch (Exception ex) {
                     System.err.println("Lỗi tải snapshot: " + ex.getMessage());
-                    // Nếu backend chưa có dữ liệu thì nạp dữ liệu mẫu ban đầu
-                    initDefaultConversations();
+                    conversations.clear();
+                    conversationMessages.clear();
+                    sidebar.setConversations(conversations);
+                    chatPanel.setConversation(null);
+                    infoDrawer.setConversation(null);
+                    JOptionPane.showMessageDialog(MainFrame.this,
+                            "Không thể tải hội thoại. Vui lòng kiểm tra kết nối và thử lại.",
+                            "Lỗi tải dữ liệu", JOptionPane.ERROR_MESSAGE);
                 }
             }
         }.execute();
@@ -223,42 +229,14 @@ public class MainFrame extends JFrame {
             }
         }
 
+        sidebar.setConversations(conversations);
         if (conversations.isEmpty()) {
-            initDefaultConversations();
+            chatPanel.setConversation(null);
+            infoDrawer.setConversation(null);
         } else {
-            sidebar.setConversations(conversations);
             chatPanel.setConversation(conversations.get(0));
             infoDrawer.setConversation(conversations.get(0));
         }
-    }
-
-    private void initDefaultConversations() {
-        conversations.clear();
-        ConversationItem demo = new ConversationItem();
-        demo.setId(1);
-        demo.setName("Nhóm Lập trình mạng");
-        demo.setType("GROUP");
-        demo.setAvatarText("LTM");
-        demo.setLastMessage("Chào mừng bạn đến với ChatSpace!");
-        demo.setLastMessageTime("12:00");
-
-        List<ChatMessage> msgs = new ArrayList<>();
-        ChatMessage m = new ChatMessage();
-        m.setId(1);
-        m.setConversationId(1);
-        m.setSenderName("Hệ thống");
-        m.setContent("Chào mừng bạn đến với ChatSpace! Bắt đầu gửi tin nhắn thời gian thực ngay.");
-        m.setCreatedAt("12:00");
-        m.setSentByMe(false);
-        msgs.add(m);
-        demo.setMessages(msgs);
-
-        conversations.add(demo);
-        conversationMessages.put(1L, msgs);
-
-        sidebar.setConversations(conversations);
-        chatPanel.setConversation(demo);
-        infoDrawer.setConversation(demo);
     }
 
     // =====================================================================
