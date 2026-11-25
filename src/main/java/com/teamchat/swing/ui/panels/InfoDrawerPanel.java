@@ -180,11 +180,13 @@ public class InfoDrawerPanel extends JPanel {
     public void setConversation(ConversationItem item) {
         this.conversation = item;
         if (item == null) {
+            avatar.setImageUrl(null);
             setVisible(false);
             return;
         }
 
         avatar.setText(item.getDisplayInitials());
+        avatar.setImageUrl(item.getAvatarUrl());
         nameLabel.setText(item.getName() != null ? item.getName() : "Hội thoại");
         boolean isGroup = "GROUP".equalsIgnoreCase(item.getType());
         statusLabel.setText(isGroup ? "Nhóm chat" : "Đang hoạt động");
@@ -205,7 +207,8 @@ public class InfoDrawerPanel extends JPanel {
                     mRow.setOpaque(false);
                     mRow.setMaximumSize(new Dimension(240, 28));
 
-                    AvatarCircle mAv = new AvatarCircle(m.getName(), 20, UITheme.AVATAR_INACTIVE, Color.WHITE);
+                    AvatarCircle mAv = new AvatarCircle(m.getDisplayInitials(), 20, UITheme.AVATAR_INACTIVE, Color.WHITE);
+                    mAv.setImageUrl(m.getAvatarUrl());
                     JLabel mName = new JLabel(m.getName());
                     mName.setFont(UITheme.FONT_SMALL);
 

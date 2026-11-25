@@ -8,11 +8,15 @@ import java.awt.*;
 import java.awt.geom.Ellipse2D;
 import java.io.File;
 import java.net.URI;
-import java.net.URL;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Circular avatar component that displays user/group initials on a colored background
@@ -21,7 +25,7 @@ import java.util.concurrent.Executors;
  */
 public class AvatarCircle extends JComponent {
 
-    private static final Map<String, Image> IMAGE_CACHE = new ConcurrentHashMap<>();
+    private static final Map<String, CompletableFuture<Image>> IMAGE_CACHE = new ConcurrentHashMap<>();
     private static final ExecutorService IMAGE_LOADER = Executors.newFixedThreadPool(3, r -> {
         Thread t = new Thread(r, "AvatarImageLoader");
         t.setDaemon(true);
@@ -33,8 +37,9 @@ public class AvatarCircle extends JComponent {
     private Color bgColor;
     private Color textColor;
     private boolean online;
-    private String imageUrl;
+    private String imageSource;
     private Image cachedImage;
+    private final Set<String> pendingRepaints = new HashSet<>();
 
     public AvatarCircle(String text, int size) {
         this(text, size, new Color(0x98, 0xa6, 0xb8), Color.WHITE);
@@ -71,59 +76,77 @@ public class AvatarCircle extends JComponent {
         repaint();
     }
 
-    public String getImageUrl() {
-        return imageUrl;
+    public void setImageUrl(String url) {
+        setImageUrl(url, this);
     }
 
-    public void setImageUrl(String url) {
-        this.imageUrl = url;
-        if (url == null || url.trim().isEmpty()) {
-            this.cachedImage = null;
+    public void setImageUrl(String url, JComponent repaintTarget) {
+        String source = url == null ? "" : url.strip();
+        if (source.startsWith("/uploads/")) {
+            source = ApiClient.getBaseUrl() + source;
+        } else if (!source.regionMatches(true, 0, "https://", 0, 8)
+                && !source.regionMatches(true, 0, "http://", 0, 7)) {
+            source = null;
+        }
+        setSource(source, repaintTarget);
+    }
+
+    public void setImageFile(File file) {
+        setSource(file.toURI().toString(), this);
+    }
+
+    private void setSource(String source, JComponent repaintTarget) {
+        if (!Objects.equals(source, imageSource)) {
+            imageSource = source;
+            cachedImage = null;
             repaint();
+        }
+        if (source == null || cachedImage != null) return;
+
+        CompletableFuture<Image> load = IMAGE_CACHE.computeIfAbsent(source, AvatarCircle::loadAsync);
+        if (load.isDone()) {
+            cachedImage = load.getNow(null);
             return;
         }
-
-        String finalUrl = url.trim();
-        // Kiểm tra trong bộ nhớ đệm
-        if (IMAGE_CACHE.containsKey(finalUrl)) {
-            this.cachedImage = IMAGE_CACHE.get(finalUrl);
-            repaint();
-            return;
+        if (pendingRepaints.add(source)) {
+            load.thenAccept(image -> SwingUtilities.invokeLater(() -> {
+                pendingRepaints.remove(source);
+                if (source.equals(imageSource)) {
+                    cachedImage = image;
+                }
+                // A reused list renderer must repaint the list once the image is available.
+                repaintTarget.repaint();
+            }));
         }
+    }
 
-        // Tải ảnh ngầm (Asynchronous) không làm đơ giao diện
-        IMAGE_LOADER.submit(() -> {
-            try {
-                Image img = null;
-                if (finalUrl.startsWith("http://") || finalUrl.startsWith("https://")) {
-                    URL u = URI.create(finalUrl).toURL();
-                    img = ImageIO.read(u);
-                } else if (finalUrl.startsWith("/uploads/")) {
-                    // Endpoint ảnh upload trên backend
-                    String fullUrl = ApiClient.getBaseUrl() + finalUrl;
-                    URL u = URI.create(fullUrl).toURL();
-                    img = ImageIO.read(u);
-                } else {
-                    File f = new File(finalUrl);
-                    if (f.exists()) {
-                        img = ImageIO.read(f);
-                    }
-                }
-
-                if (img != null) {
-                    IMAGE_CACHE.put(finalUrl, img);
-                    final Image loadedImg = img;
-                    SwingUtilities.invokeLater(() -> {
-                        if (finalUrl.equals(this.imageUrl)) {
-                            this.cachedImage = loadedImg;
-                            repaint();
-                        }
-                    });
-                }
-            } catch (Exception ignored) {
-                // Nếu tải ảnh thất bại, component sẽ tự hiển thị chữ cái đại diện (initials)
+    private static CompletableFuture<Image> loadAsync(String source) {
+        CompletableFuture<Image> load = CompletableFuture.supplyAsync(() -> readImage(source), IMAGE_LOADER);
+        load.thenAccept(image -> {
+            if (image == null) {
+                CompletableFuture.delayedExecutor(30, TimeUnit.SECONDS)
+                        .execute(() -> IMAGE_CACHE.remove(source, load));
             }
         });
+        return load;
+    }
+
+    private static Image readImage(String source) {
+        try {
+            URI uri = URI.create(source);
+            if ("file".equals(uri.getScheme())) {
+                return ImageIO.read(new File(uri));
+            }
+            var connection = uri.toURL().openConnection();
+            connection.setConnectTimeout(5_000);
+            connection.setReadTimeout(5_000);
+            connection.setRequestProperty("Accept", "image/png,image/jpeg,image/gif");
+            try (var stream = connection.getInputStream()) {
+                return ImageIO.read(stream);
+            }
+        } catch (java.io.IOException | IllegalArgumentException ex) {
+            return null;
+        }
     }
 
     @Override
@@ -134,11 +157,16 @@ public class AvatarCircle extends JComponent {
         g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
         g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
 
-        if (cachedImage != null) {
+        int imageWidth = cachedImage == null ? 0 : cachedImage.getWidth(this);
+        int imageHeight = cachedImage == null ? 0 : cachedImage.getHeight(this);
+        if (imageWidth > 0 && imageHeight > 0) {
             // Cắt khung tròn và vẽ ảnh đại diện
             Shape oldClip = g2.getClip();
             g2.setClip(new Ellipse2D.Float(0, 0, size, size));
-            g2.drawImage(cachedImage, 0, 0, size, size, null);
+            double scale = Math.max((double) size / imageWidth, (double) size / imageHeight);
+            int width = (int) Math.ceil(imageWidth * scale);
+            int height = (int) Math.ceil(imageHeight * scale);
+            g2.drawImage(cachedImage, (size - width) / 2, (size - height) / 2, width, height, this);
             g2.setClip(oldClip);
 
             // Viền mỏng tinh tế quanh avatar

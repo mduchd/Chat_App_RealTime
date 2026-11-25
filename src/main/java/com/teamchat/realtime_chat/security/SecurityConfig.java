@@ -20,6 +20,8 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import org.springframework.web.filter.OncePerRequestFilter;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.authentication.SavedRequestAwareAuthenticationSuccessHandler;
+import org.springframework.security.web.authentication.SimpleUrlAuthenticationFailureHandler;
 import org.springframework.session.web.http.CookieSerializer;
 import org.springframework.session.web.http.DefaultCookieSerializer;
 
@@ -45,7 +47,11 @@ public class SecurityConfig {
     }
 
     @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain filterChain(HttpSecurity http, DesktopGoogleSignIn desktopGoogle) throws Exception {
+        var webSuccess = new SavedRequestAwareAuthenticationSuccessHandler();
+        webSuccess.setDefaultTargetUrl(frontendUrl);
+        webSuccess.setAlwaysUseDefaultTargetUrl(true);
+        var webFailure = new SimpleUrlAuthenticationFailureHandler("/login?error");
         http
             .addFilterBefore(new OncePerRequestFilter() {
                 @Override
@@ -73,7 +79,17 @@ public class SecurityConfig {
                 .anyRequest().authenticated()
             )
             .oauth2Login(oauth2 -> oauth2
-                .defaultSuccessUrl(frontendUrl, true)
+                .authorizationEndpoint(endpoint -> endpoint.authorizationRequestRepository(desktopGoogle))
+                .successHandler((request, response, authentication) -> {
+                    if (!desktopGoogle.complete(request, response, authentication)) {
+                        webSuccess.onAuthenticationSuccess(request, response, authentication);
+                    }
+                })
+                .failureHandler((request, response, failure) -> {
+                    if (!desktopGoogle.fail(request, response)) {
+                        webFailure.onAuthenticationFailure(request, response, failure);
+                    }
+                })
             );
         return http.build();
     }

@@ -58,8 +58,8 @@ public class MessageBubble extends JPanel {
         String safeText = escapeHtml(message.getContent()).replace("\r\n", "<br>").replace("\n", "<br>");
         String textColorHex = sentByMe ? "#ffffff" : (UITheme.isDarkMode ? "#f1f5f9" : "#1e293b");
         // font-size 10px trong Swing HTML render chuẩn nét tương đương font 12.5-13pt chuẩn hệ thống, không bị to thô
-        JLabel contentLabel = new JLabel("<html><body style='width: 310px; font-family: \"Segoe UI\", Tahoma, Arial, sans-serif; font-size: 10px; line-height: 1.35; color: " + textColorHex + ";'>" + safeText + "</body></html>");
-        contentLabel.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        JLabel contentLabel = new JLabel("<html><body style='width: 310px; font-family: Dialog; font-size: 10px; line-height: 1.35; color: " + textColorHex + ";'>" + safeText + "</body></html>");
+        contentLabel.setFont(UITheme.FONT_CHAT_TEXT.deriveFont(12f));
         contentLabel.setForeground(sentByMe ? UITheme.BUBBLE_SENT_TEXT : UITheme.BUBBLE_RECEIVED_TEXT);
         contentLabel.setAlignmentX(sentByMe ? Component.RIGHT_ALIGNMENT : Component.LEFT_ALIGNMENT);
         bubble.add(contentLabel);

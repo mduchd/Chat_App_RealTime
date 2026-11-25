@@ -21,10 +21,9 @@ import com.teamchat.swing.ui.panels.TopBarPanel;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.List;
+import java.util.concurrent.ExecutionException;
 
 /**
  * =========================================================================
@@ -38,10 +37,7 @@ import java.util.List;
  *     + Cột trái: SidebarPanel (Màu nền #f2f6fb, tìm kiếm, 4 tab lọc, danh sách hội thoại).
  *     + Khung giữa: ChatPanel (Header chat, luồng bong bóng tin nhắn, ô nhập tin nhắn).
  *     + Ngăn phải: InfoDrawerPanel (Thông tin hội thoại, thành viên nhóm, mở khi bấm nút ⋮).
- * - Kết nối WebSocket STOMP tới Backend để gửi và nhận tin nhắn thời gian thực.
- * - Đăng ký các kênh lắng nghe:
- *     + /user/queue/private: Nhận tin nhắn cá nhân từ người khác gửi đến.
- *     + /topic/room.{id}: Nhận tin nhắn từ các nhóm chat đang tham gia.
+ * - Gửi tin nhắn qua API lưu trữ và nhận cập nhật qua WebSocket STOMP.
  */
 public class MainFrame extends JFrame {
 
@@ -61,9 +57,9 @@ public class MainFrame extends JFrame {
     private ChatPanel chatPanel;
     private InfoDrawerPanel infoDrawer;
 
-    // Dữ liệu bộ nhớ cục bộ
-    private final List<ConversationItem> conversations = new ArrayList<>();
-    private final Map<Long, List<ChatMessage>> conversationMessages = new HashMap<>();
+    private long snapshotVersion;
+    private boolean loadedSnapshot;
+    private String conversationToSelect;
 
     public MainFrame(UserInfo user) {
         this.currentUser = user;
@@ -155,6 +151,7 @@ public class MainFrame extends JFrame {
      * Dùng SwingWorker chạy ngầm trên nền để không làm đơ giao diện
      */
     private void loadDataFromBackend() {
+        long version = ++snapshotVersion;
         new SwingWorker<JsonObject, Void>() {
             @Override
             protected JsonObject doInBackground() throws Exception {
@@ -164,19 +161,23 @@ public class MainFrame extends JFrame {
 
             @Override
             protected void done() {
+                if (version != snapshotVersion || !isDisplayable()) return;
                 try {
-                    JsonObject snapshot = get();
-                    parseSnapshot(snapshot);
+                    List<ConversationItem> conversations = parseSnapshot(get());
+                    sidebar.setConversations(conversations);
+                    if (conversationToSelect != null) {
+                        sidebar.selectConversation(conversationToSelect);
+                        conversationToSelect = null;
+                    }
+                    onConversationSelected(sidebar.getSelectedConversation());
+                    loadedSnapshot = true;
                 } catch (Exception ex) {
                     System.err.println("Lỗi tải snapshot: " + ex.getMessage());
-                    conversations.clear();
-                    conversationMessages.clear();
-                    sidebar.setConversations(conversations);
-                    chatPanel.setConversation(null);
-                    infoDrawer.setConversation(null);
-                    JOptionPane.showMessageDialog(MainFrame.this,
-                            "Không thể tải hội thoại. Vui lòng kiểm tra kết nối và thử lại.",
-                            "Lỗi tải dữ liệu", JOptionPane.ERROR_MESSAGE);
+                    if (!loadedSnapshot) {
+                        JOptionPane.showMessageDialog(MainFrame.this,
+                                "Không thể tải hội thoại. Vui lòng kiểm tra kết nối và thử lại.",
+                                "Lỗi tải dữ liệu", JOptionPane.ERROR_MESSAGE);
+                    }
                 }
             }
         }.execute();
@@ -185,58 +186,69 @@ public class MainFrame extends JFrame {
     /**
      * Bóc tách JSON snapshot và đưa vào model của Sidebar và ChatPanel
      */
-    private void parseSnapshot(JsonObject snapshot) {
-        conversations.clear();
-        conversationMessages.clear();
+    private List<ConversationItem> parseSnapshot(JsonObject snapshot) {
+        List<ConversationItem> conversations = new ArrayList<>();
+        for (JsonElement element : array(snapshot, "conversations")) {
+            JsonObject data = element.getAsJsonObject();
+            String id = value(data, "id", "");
+            if (id.isBlank()) continue;
 
-        if (snapshot.has("conversations") && snapshot.get("conversations").isJsonArray()) {
-            JsonArray arr = snapshot.getAsJsonArray("conversations");
-            for (JsonElement el : arr) {
-                JsonObject obj = el.getAsJsonObject();
-                ConversationItem item = new ConversationItem();
-                item.setId(obj.has("id") ? obj.get("id").getAsLong() : 1);
-                item.setName(obj.has("name") ? obj.get("name").getAsString() : "Hội thoại");
-                item.setType(obj.has("type") ? obj.get("type").getAsString() : "PRIVATE");
-                item.setLastMessage(obj.has("lastMessage") && !obj.get("lastMessage").isJsonNull() ? obj.get("lastMessage").getAsString() : "");
-                item.setLastMessageTime(obj.has("lastMessageTime") && !obj.get("lastMessageTime").isJsonNull() ? obj.get("lastMessageTime").getAsString() : "");
-                item.setUnreadCount(obj.has("unreadCount") ? obj.get("unreadCount").getAsInt() : 0);
+            ConversationItem conversation = new ConversationItem();
+            conversation.setId(id);
+            conversation.setName(value(data, "name", "Hội thoại"));
+            conversation.setType(value(data, "type", "DIRECT"));
+            conversation.setAvatarText(value(data, "avatarText", ""));
+            conversation.setAvatarUrl(value(data, "avatar", value(data, "avatarUrl", "")));
+            conversation.setUnreadCount(Integer.parseInt(value(data, "unreadCount", "0")));
+            conversation.setPinned(Boolean.parseBoolean(value(data, "pinned", "false")));
+            conversation.setMuted(Boolean.parseBoolean(value(data, "muted", "false")));
+            conversation.setArchived(Boolean.parseBoolean(value(data, "archived", "false")));
+            conversation.setBlocked(Boolean.parseBoolean(value(data, "blocked", "false")));
+            conversation.setLegacyReadOnly(Boolean.parseBoolean(value(data, "legacyReadOnly", "false")));
 
-                // Nạp lịch sử tin nhắn của từng hội thoại
-                if (obj.has("messages") && obj.get("messages").isJsonArray()) {
-                    List<ChatMessage> msgList = new ArrayList<>();
-                    for (JsonElement mEl : obj.getAsJsonArray("messages")) {
-                        JsonObject mObj = mEl.getAsJsonObject();
-                        ChatMessage m = new ChatMessage();
-                        m.setId(mObj.has("id") ? mObj.get("id").getAsLong() : 0);
-                        m.setConversationId(item.getId());
-                        m.setContent(mObj.has("content") ? mObj.get("content").getAsString() : "");
-                        m.setSenderId(mObj.has("senderId") ? mObj.get("senderId").getAsString() : "");
-                        m.setSenderName(mObj.has("senderName") ? mObj.get("senderName").getAsString() : "");
-                        m.setCreatedAt(mObj.has("createdAt") ? mObj.get("createdAt").getAsString() : "");
-
-                        // Kiểm tra tin nhắn này do chính tôi gửi hay do người khác gửi
-                        boolean sentByMe = currentUser != null &&
-                                (Objects.equals(m.getSenderId(), currentUser.getId()) ||
-                                 Objects.equals(m.getSenderId(), currentUser.getEmail()));
-                        m.setSentByMe(sentByMe);
-                        msgList.add(m);
-                    }
-                    item.setMessages(msgList);
-                    conversationMessages.put(item.getId(), msgList);
-                }
-
-                conversations.add(item);
+            for (JsonElement memberElement : array(data, "members")) {
+                JsonObject memberData = memberElement.getAsJsonObject();
+                ConversationItem.MemberInfo member = new ConversationItem.MemberInfo();
+                member.setId(value(memberData, "id", ""));
+                member.setName(value(memberData, "name", ""));
+                member.setRole(value(memberData, "role", ""));
+                member.setAvatarUrl(value(memberData, "avatar", value(memberData, "avatarUrl", "")));
+                conversation.getMembers().add(member);
             }
+            List<ChatMessage> messages = conversation.getMessages();
+            for (JsonElement messageElement : array(data, "messages")) {
+                JsonObject messageData = messageElement.getAsJsonObject();
+                ChatMessage message = new ChatMessage();
+                message.setId(value(messageData, "id", ""));
+                message.setConversationId(id);
+                message.setContent(value(messageData, "content", ""));
+                message.setSenderId(value(messageData, "senderId", ""));
+                message.setSenderName(value(messageData, "senderName", ""));
+                message.setCreatedAt(value(messageData, "timestamp", value(messageData, "createdAt", "")));
+                message.setSentByMe(isCurrentUser(message.getSenderId()));
+                messages.add(message);
+            }
+            ChatMessage latest = messages.isEmpty() ? null : messages.getLast();
+            conversation.setLastMessage(value(data, "lastMessage", latest == null ? "" : latest.getContent()));
+            conversation.setLastMessageTime(value(data, "lastMessageTime", latest == null ? "" : latest.getTimeDisplay()));
+            conversations.add(conversation);
         }
+        return conversations;
+    }
 
-        sidebar.setConversations(conversations);
-        if (conversations.isEmpty()) {
-            chatPanel.setConversation(null);
-            infoDrawer.setConversation(null);
-        } else {
-            chatPanel.setConversation(conversations.get(0));
-            infoDrawer.setConversation(conversations.get(0));
-        }
+    private static JsonArray array(JsonObject object, String key) {
+        JsonElement element = object.get(key);
+        return element != null && element.isJsonArray() ? element.getAsJsonArray() : new JsonArray();
+    }
+
+    private static String value(JsonObject object, String key, String fallback) {
+        JsonElement element = object.get(key);
+        return element != null && element.isJsonPrimitive() ? element.getAsString() : fallback;
+    }
+
+    private boolean isCurrentUser(String senderId) {
+        return currentUser != null && (Objects.equals(senderId, currentUser.getId())
+                || Objects.equals(senderId, currentUser.getEmail()));
     }
 
     // =====================================================================
@@ -262,136 +274,68 @@ public class MainFrame extends JFrame {
         stompClient.setConnectionListener(connected -> SwingUtilities.invokeLater(() -> {
             topBar.setWsConnected(connected);
             if (connected) {
-                // Đăng ký nhận tin từ các kênh
-                subscribeChannels();
+                stompClient.subscribe("/user/queue/messages", (destination, body) ->
+                        SwingUtilities.invokeLater(() -> handleIncomingMessage(body)));
+                if (loadedSnapshot) loadDataFromBackend();
             }
         }));
 
         stompClient.connect(wsUrl, headers);
     }
 
-    /**
-     * Đăng ký nhận tin nhắn từ các kênh STOMP
-     */
-    private void subscribeChannels() {
-        // 1. Kênh tin nhắn riêng tư của người dùng: /user/queue/private
-        stompClient.subscribe("/user/queue/private", (dest, body) -> {
-            SwingUtilities.invokeLater(() -> handleIncomingMessage(body));
-        });
-
-        // 2. Kênh của các nhóm chat: /topic/room.{conversationId}
-        for (ConversationItem conv : conversations) {
-            if ("GROUP".equalsIgnoreCase(conv.getType())) {
-                stompClient.subscribe("/topic/room." + conv.getId(), (dest, body) -> {
-                    SwingUtilities.invokeLater(() -> handleIncomingMessage(body));
-                });
-            }
-        }
-    }
-
-    /**
-     * Xử lý khi có tin nhắn mới từ WebSocket đẩy về
-     */
     private void handleIncomingMessage(String json) {
+        if (!isDisplayable()) return;
         try {
-            JsonObject obj = com.google.gson.JsonParser.parseString(json).getAsJsonObject();
-            String content = obj.has("content") ? obj.get("content").getAsString() : "";
-            String senderName = obj.has("senderName") ? obj.get("senderName").getAsString() : "Người dùng";
-            String senderId = obj.has("senderId") ? obj.get("senderId").getAsString() : "";
-            long convId = obj.has("conversationId") ? obj.get("conversationId").getAsLong() : 0;
-
-            ChatMessage msg = new ChatMessage();
-            msg.setContent(content);
-            msg.setSenderName(senderName);
-            msg.setSenderId(senderId);
-            msg.setConversationId(convId);
-            msg.setCreatedAt(DateTimeFormatter.ofPattern("HH:mm").format(LocalDateTime.now()));
-
-            boolean sentByMe = currentUser != null &&
-                    (Objects.equals(senderId, currentUser.getId()) || Objects.equals(senderId, currentUser.getEmail()));
-            msg.setSentByMe(sentByMe);
-
-            // Phát âm thanh và thông báo đẩy khi có tin nhắn mới (nếu không phải do mình gửi)
-            if (!sentByMe) {
-                com.teamchat.swing.util.SoundService.playNotificationSound();
-                com.teamchat.swing.util.NotificationService.showNotification(senderName, content);
-            }
-
-            // Cập nhật lên khung chat nếu đang mở đúng cuộc trò chuyện đó
-            ConversationItem currentConv = chatPanel.getCurrentConversation();
-            if (currentConv != null && (convId == 0 || currentConv.getId() == convId)) {
-                chatPanel.addMessage(msg);
-                currentConv.setLastMessage(content);
-                currentConv.setLastMessageTime(msg.getTimeDisplay());
-                sidebar.updateConversation(currentConv);
+            JsonObject event = com.google.gson.JsonParser.parseString(json).getAsJsonObject();
+            if (!"CHAT_UPDATED".equals(value(event, "type", ""))) return;
+            loadDataFromBackend();
+            if (event.has("message") && event.get("message").isJsonObject()) {
+                JsonObject message = event.getAsJsonObject("message");
+                String sender = value(message, "senderId", "");
+                if (!sender.isEmpty() && !isCurrentUser(sender)) {
+                    com.teamchat.swing.util.SoundService.playNotificationSound();
+                    com.teamchat.swing.util.NotificationService.showNotification(
+                            value(message, "senderName", "Người dùng"), value(message, "content", ""));
+                }
             }
         } catch (Exception ex) {
             System.err.println("Lỗi xử lý tin nhắn đến: " + ex.getMessage());
         }
     }
 
-    /**
-     * Gửi tin nhắn:
-     * 1. Hiển thị ngay lên giao diện (Optimistic UI update)
-     * 2. Gửi Frame SEND qua STOMP /app/chat.private tới Spring Boot Controller
-     */
     private void sendMessage(String text) {
         ConversationItem conv = chatPanel.getCurrentConversation();
         if (conv == null) return;
+        new SwingWorker<String, Void>() {
+            @Override
+            protected String doInBackground() throws Exception {
+                String id = conv.isLegacyReadOnly() ? ApiClient.continueConversation(conv.getId()) : conv.getId();
+                Map<String, Object> message = Map.of("id", UUID.randomUUID().toString(), "senderId", currentUser.getId(),
+                        "content", text);
+                ApiClient.syncState(Map.of("conversations", List.of(Map.of(
+                        "id", id, "type", conv.getType(), "messages", List.of(message)))));
+                return id;
+            }
 
-        // 1. Thêm tin nhắn của chính mình vào giao diện trước
-        ChatMessage myMsg = new ChatMessage();
-        myMsg.setContent(text);
-        myMsg.setSenderName(currentUser != null ? currentUser.getName() : "Tôi");
-        myMsg.setSenderId(currentUser != null ? currentUser.getId() : "");
-        myMsg.setConversationId(conv.getId());
-        myMsg.setCreatedAt(DateTimeFormatter.ofPattern("HH:mm").format(LocalDateTime.now()));
-        myMsg.setSentByMe(true);
-
-        // Lưu vào danh sách tin nhắn của chính hội thoại này
-        if (conv.getMessages() == null) {
-            conv.setMessages(new ArrayList<>());
-        }
-        conv.getMessages().add(myMsg);
-
-        // Lưu vào bộ nhớ cục bộ map
-        List<ChatMessage> list = conversationMessages.computeIfAbsent(conv.getId(), k -> new ArrayList<>());
-        list.add(myMsg);
-
-        // Hiển thị trực tiếp lên màn hình chat
-        chatPanel.addMessage(myMsg);
-
-        // Cập nhật dòng tóm tắt ở cột hội thoại bên trái
-        conv.setLastMessage(text);
-        conv.setLastMessageTime(myMsg.getTimeDisplay());
-        sidebar.updateConversation(conv);
-
-        // 2. Gửi qua WebSocket STOMP
-        JsonObject payload = new JsonObject();
-        payload.addProperty("recipient", conv.getName());
-        payload.addProperty("content", text);
-        payload.addProperty("conversationId", conv.getId());
-        stompClient.send("/app/chat.private", payload.toString());
-
-        // 3. Lưu lịch sử tin nhắn vào database qua REST API
-        new Thread(() -> {
-            try {
-                String msgUuid = UUID.randomUUID().toString();
-                Map<String, Object> syncMsg = new HashMap<>();
-                syncMsg.put("id", msgUuid);
-                syncMsg.put("senderId", currentUser != null ? currentUser.getId() : "1");
-                syncMsg.put("content", text);
-
-                Map<String, Object> syncConv = new HashMap<>();
-                syncConv.put("id", String.valueOf(conv.getId()));
-                syncConv.put("type", conv.getType());
-                syncConv.put("messages", List.of(syncMsg));
-
-                Map<String, Object> state = new HashMap<>();
-                state.put("conversations", List.of(syncConv));
-                ApiClient.syncState(state);
-            } catch (Exception ignored) {}
-        }, "MessageSyncThread").start();
+            @Override
+            protected void done() {
+                if (!isDisplayable()) return;
+                try {
+                    String id = get();
+                    ConversationItem selected = chatPanel.getCurrentConversation();
+                    if (conv.isLegacyReadOnly() && selected != null && Objects.equals(conv.getId(), selected.getId())) {
+                        conversationToSelect = id;
+                    }
+                    loadDataFromBackend();
+                } catch (InterruptedException ex) {
+                    Thread.currentThread().interrupt();
+                } catch (ExecutionException ex) {
+                    JOptionPane.showMessageDialog(MainFrame.this,
+                            "Không thể gửi tin nhắn. " + ex.getCause().getMessage(),
+                            "Lỗi gửi tin nhắn", JOptionPane.ERROR_MESSAGE);
+                }
+            }
+        }.execute();
     }
 
     // =====================================================================
@@ -399,11 +343,7 @@ public class MainFrame extends JFrame {
     // =====================================================================
 
     private void onConversationSelected(ConversationItem conv) {
-        if (conv == null) return;
-        ConversationItem current = chatPanel.getCurrentConversation();
-        if (current != null && current.getId() == conv.getId()) {
-            return; // Đang mở đúng hội thoại này, không tải lại để tránh xóa mất tin nhắn vừa gửi
-        }
+        if (chatPanel.getCurrentConversation() == conv) return;
         chatPanel.setConversation(conv);
         infoDrawer.setConversation(conv);
     }

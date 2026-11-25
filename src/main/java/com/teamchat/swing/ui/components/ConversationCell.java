@@ -54,7 +54,8 @@ public class ConversationCell extends JPanel implements ListCellRenderer<Convers
         bottomRow.setOpaque(false);
 
         lastMsgLabel = new JLabel();
-        lastMsgLabel.setFont(UITheme.FONT_SMALL);
+        lastMsgLabel.putClientProperty("html.disable", true);
+        lastMsgLabel.setFont(UITheme.FONT_CHAT_TEXT.deriveFont(UITheme.FONT_SMALL.getSize2D()));
         lastMsgLabel.setForeground(UITheme.TEXT_MUTED);
 
         unreadBadge = new JLabel() {
@@ -89,6 +90,7 @@ public class ConversationCell extends JPanel implements ListCellRenderer<Convers
                                                   boolean cellHasFocus) {
         if (item != null) {
             avatar.setText(item.getDisplayInitials());
+            avatar.setImageUrl(item.getAvatarUrl(), list);
             nameLabel.setText(item.getName() != null ? item.getName() : "Hội thoại");
             timeLabel.setText(item.getLastMessageTime() != null ? item.getLastMessageTime() : "");
             lastMsgLabel.setText(item.getLastMessage() != null ? item.getLastMessage() : "Bắt đầu cuộc trò chuyện...");

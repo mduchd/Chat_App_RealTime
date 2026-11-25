@@ -266,7 +266,7 @@ public class ChatPanel extends JPanel {
 
         messageInput = new JTextField();
         messageInput.setBorder(BorderFactory.createEmptyBorder(6, 6, 6, 6));
-        messageInput.setFont(new Font("Segoe UI", Font.PLAIN, 13));
+        messageInput.setFont(UITheme.FONT_CHAT_TEXT);
         messageInput.setOpaque(false);
         messageInput.addKeyListener(new KeyAdapter() {
             @Override
@@ -312,6 +312,7 @@ public class ChatPanel extends JPanel {
         if (conv == null) {
             headerNameLabel.setText("Chọn một hội thoại");
             headerAvatar.setText("?");
+            headerAvatar.setImageUrl(null);
             headerBadge.setVisible(false);
             btnHeaderAddMember.setVisible(false);
             pinnedIcon.setVisible(false);
@@ -323,6 +324,7 @@ public class ChatPanel extends JPanel {
 
         headerNameLabel.setText(conv.getName() != null ? conv.getName() : "Hội thoại");
         headerAvatar.setText(conv.getDisplayInitials());
+        headerAvatar.setImageUrl(conv.getAvatarUrl());
         boolean isGroup = "GROUP".equalsIgnoreCase(conv.getType());
         headerBadge.setText(isGroup ? "Nhóm" : "Cá nhân");
         headerBadge.setVisible(true);
@@ -474,6 +476,7 @@ public class ChatPanel extends JPanel {
             b.setOpaque(false);
             b.setCursor(new Cursor(Cursor.HAND_CURSOR));
             b.setToolTipText(tooltips[i]);
+            b.getAccessibleContext().setAccessibleName(tooltips[i]);
 
             final JButton btnRef = b;
             b.addMouseListener(new java.awt.event.MouseAdapter() {
@@ -483,7 +486,7 @@ public class ChatPanel extends JPanel {
 
             final String emo = textInserts[i];
             b.addActionListener(ev -> {
-                messageInput.setText(messageInput.getText() + emo);
+                messageInput.replaceSelection(emo);
                 menu.setVisible(false);
                 messageInput.requestFocusInWindow();
             });

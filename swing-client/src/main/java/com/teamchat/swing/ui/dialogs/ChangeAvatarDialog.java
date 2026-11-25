@@ -296,7 +296,7 @@ public class ChangeAvatarDialog extends JDialog {
             this.selectedFile = f;
             this.selectedUrl = f.getAbsolutePath();
             if (txtUrl != null) txtUrl.setText(f.getName());
-            previewAvatar.setImageUrl(f.getAbsolutePath());
+            previewAvatar.setImageFile(f);
             lblStatus.setText("Đã chọn file: " + f.getName());
             lblStatus.setForeground(UITheme.THEME_PRIMARY);
             repaintPresets();

@@ -1,6 +1,7 @@
 package com.teamchat.swing.ui;
 
 import com.teamchat.swing.api.ApiClient;
+import com.teamchat.swing.api.GoogleSignIn;
 import com.teamchat.swing.model.UserInfo;
 import com.teamchat.swing.ui.components.RoundedButton;
 import com.teamchat.swing.ui.components.RoundedPanel;
@@ -12,6 +13,8 @@ import javax.swing.border.EmptyBorder;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
 
 /**
  * =========================================================================
@@ -38,6 +41,8 @@ public class AuthFrame extends JFrame {
     // Login Form Fields
     private RoundedTextField loginEmailField;
     private RoundedPasswordField loginPasswordField;
+    private RoundedButton googleLoginButton;
+    private boolean signingIn;
     private boolean loginPasswordVisible = false;
 
     // Register Form Fields
@@ -240,18 +245,13 @@ public class AuthFrame extends JFrame {
         panel.add(Box.createVerticalStrut(12));
 
         // Nút Google (btn-google-oauth)
-        RoundedButton btnGoogle = new RoundedButton("Đăng nhập nhanh bằng Google", 9, Color.WHITE, UITheme.TEXT_MAIN, UITheme.BORDER_LIGHT);
-        btnGoogle.setFont(UITheme.FONT_REGULAR); // 14pt
-        btnGoogle.setMaximumSize(new Dimension(FORM_WIDTH, 40));
-        btnGoogle.setPreferredSize(new Dimension(FORM_WIDTH, 40));
-        btnGoogle.setAlignmentX(Component.CENTER_ALIGNMENT);
-        btnGoogle.addActionListener(e -> {
-            JOptionPane.showMessageDialog(this,
-                    "Vui lòng sử dụng tài khoản Gmail và Mật khẩu để đăng nhập trên ứng dụng Desktop,\n" +
-                            "hoặc đăng nhập qua trình duyệt web tại: " + ApiClient.getBaseUrl(),
-                    "Google OAuth", JOptionPane.INFORMATION_MESSAGE);
-        });
-        panel.add(btnGoogle);
+        googleLoginButton = new RoundedButton("Đăng nhập nhanh bằng Google", 9, Color.WHITE, UITheme.TEXT_MAIN, UITheme.BORDER_LIGHT);
+        googleLoginButton.setFont(UITheme.FONT_REGULAR);
+        googleLoginButton.setMaximumSize(new Dimension(FORM_WIDTH, 40));
+        googleLoginButton.setPreferredSize(new Dimension(FORM_WIDTH, 40));
+        googleLoginButton.setAlignmentX(Component.CENTER_ALIGNMENT);
+        googleLoginButton.addActionListener(e -> startSignIn(GoogleSignIn::signIn, true));
+        panel.add(googleLoginButton);
         panel.add(Box.createVerticalStrut(14));
 
         // Footer: Chưa có tài khoản? Đăng ký ngay
@@ -483,6 +483,7 @@ public class AuthFrame extends JFrame {
     // =====================================================================
 
     private void handleLogin() {
+        if (signingIn) return;
         String email = loginEmailField.getText().trim();
         String password = new String(loginPasswordField.getPassword()).trim();
 
@@ -495,16 +496,31 @@ public class AuthFrame extends JFrame {
             return;
         }
 
+        startSignIn(() -> ApiClient.login(email, password), false);
+    }
+
+    private void startSignIn(Callable<ApiClient.ApiResponse> action, boolean google) {
+        if (signingIn) return;
+        signingIn = true;
+        googleLoginButton.setEnabled(false);
+        if (google) {
+            googleLoginButton.setText("Đang chờ đăng nhập trên trình duyệt…");
+        }
         setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
 
         new SwingWorker<ApiClient.ApiResponse, Void>() {
             @Override
             protected ApiClient.ApiResponse doInBackground() throws Exception {
-                return ApiClient.login(email, password);
+                return action.call();
             }
 
             @Override
             protected void done() {
+                signingIn = false;
+                googleLoginButton.setEnabled(true);
+                if (google) {
+                    googleLoginButton.setText("Đăng nhập nhanh bằng Google");
+                }
                 setCursor(Cursor.getDefaultCursor());
                 try {
                     ApiClient.ApiResponse res = get();
@@ -513,8 +529,11 @@ public class AuthFrame extends JFrame {
                     } else {
                         showError(res.message != null ? res.message : "Đăng nhập thất bại!");
                     }
-                } catch (Exception ex) {
-                    showError("Lỗi kết nối máy chủ: " + ex.getMessage());
+                } catch (ExecutionException ex) {
+                    showError((google ? "Đăng nhập Google thất bại. " : "Lỗi kết nối máy chủ: ")
+                            + ex.getCause().getMessage());
+                } catch (InterruptedException ex) {
+                    Thread.currentThread().interrupt();
                 }
             }
         }.execute();
@@ -690,6 +709,7 @@ public class AuthFrame extends JFrame {
         SwingUtilities.invokeLater(() -> {
             MainFrame mainFrame = new MainFrame(user);
             mainFrame.setVisible(true);
+            mainFrame.toFront();
         });
     }
 

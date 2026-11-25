@@ -51,6 +51,8 @@ public final class UITheme {
     public static final Font FONT_SMALL = new Font("Segoe UI", Font.PLAIN, 12);
     public static final Font FONT_BOLD_SMALL = new Font("Segoe UI", Font.BOLD, 12);
     public static final Font FONT_XS = new Font("Segoe UI", Font.PLAIN, 12);
+    // The logical font uses the system's fallback fonts for emoji and other glyphs missing from Segoe UI.
+    public static final Font FONT_CHAT_TEXT = new Font(Font.DIALOG, Font.PLAIN, 13);
 
     /**
      * Chuyển đổi toàn bộ bảng màu theo đúng biến CSS body.dark-mode trong style.css

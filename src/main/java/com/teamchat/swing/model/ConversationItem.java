@@ -1,14 +1,14 @@
 package com.teamchat.swing.model;
 
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
 public class ConversationItem {
-    private long id;
+    private String id;
     private String type; // "PRIVATE" or "GROUP"
     private String name;
     private String avatarText;
+    private String avatarUrl;
     private String lastMessage;
     private String lastMessageTime;
     private int unreadCount;
@@ -16,17 +16,20 @@ public class ConversationItem {
     private boolean muted;
     private boolean archived;
     private boolean blocked;
+    private boolean legacyReadOnly;
     private List<ChatMessage> messages = new ArrayList<>();
     private List<MemberInfo> members = new ArrayList<>();
 
-    public long getId() { return id; }
-    public void setId(long id) { this.id = id; }
+    public String getId() { return id; }
+    public void setId(String id) { this.id = id; }
     public String getType() { return type; }
     public void setType(String type) { this.type = type; }
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }
     public String getAvatarText() { return avatarText; }
     public void setAvatarText(String avatarText) { this.avatarText = avatarText; }
+    public String getAvatarUrl() { return avatarUrl; }
+    public void setAvatarUrl(String avatarUrl) { this.avatarUrl = avatarUrl; }
     public String getLastMessage() { return lastMessage; }
     public void setLastMessage(String lastMessage) { this.lastMessage = lastMessage; }
     public String getLastMessageTime() { return lastMessageTime; }
@@ -41,6 +44,8 @@ public class ConversationItem {
     public void setArchived(boolean archived) { this.archived = archived; }
     public boolean isBlocked() { return blocked; }
     public void setBlocked(boolean blocked) { this.blocked = blocked; }
+    public boolean isLegacyReadOnly() { return legacyReadOnly; }
+    public void setLegacyReadOnly(boolean legacyReadOnly) { this.legacyReadOnly = legacyReadOnly; }
     public List<ChatMessage> getMessages() { return messages; }
     public void setMessages(List<ChatMessage> messages) { this.messages = messages; }
     public List<MemberInfo> getMembers() { return members; }
@@ -48,6 +53,10 @@ public class ConversationItem {
 
     public String getDisplayInitials() {
         if (avatarText != null && !avatarText.isBlank()) return avatarText;
+        return initials(name);
+    }
+
+    private static String initials(String name) {
         if (name == null || name.isBlank()) return "?";
         String[] parts = name.trim().split("\\s+");
         if (parts.length >= 2) {
@@ -60,6 +69,7 @@ public class ConversationItem {
         private String id;
         private String name;
         private String role;
+        private String avatarUrl;
 
         public String getId() { return id; }
         public void setId(String id) { this.id = id; }
@@ -67,5 +77,8 @@ public class ConversationItem {
         public void setName(String name) { this.name = name; }
         public String getRole() { return role; }
         public void setRole(String role) { this.role = role; }
+        public String getAvatarUrl() { return avatarUrl; }
+        public void setAvatarUrl(String avatarUrl) { this.avatarUrl = avatarUrl; }
+        public String getDisplayInitials() { return initials(name); }
     }
 }

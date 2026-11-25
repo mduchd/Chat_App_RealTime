@@ -9,23 +9,23 @@ import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import com.teamchat.realtime_chat.entity.User;
 import com.teamchat.realtime_chat.repository.UserRepository;
+import com.teamchat.realtime_chat.security.AccountIdentity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import java.io.File;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
-import org.springframework.jdbc.core.JdbcTemplate;
 
 @RestController
 @RequestMapping("/api")
 public class UserController {
 
-    private final JdbcTemplate jdbc;
+    private final AccountIdentity accounts;
     private final UserRepository userRepository;
 
-    public UserController(JdbcTemplate jdbc, UserRepository userRepository) {
-        this.jdbc = jdbc;
+    public UserController(AccountIdentity accounts, UserRepository userRepository) {
+        this.accounts = accounts;
         this.userRepository = userRepository;
     }
 
@@ -35,17 +35,7 @@ public class UserController {
             Authentication authentication) {
         Map<String, Object> userInfo = new HashMap<>();
         if (principal != null) {
-            String email = principal.getAttribute("email");
-            String name = principal.getAttribute("name");
-            String picture = principal.getAttribute("picture");
-            if (email != null && !email.isBlank()) {
-                jdbc.update("INSERT INTO users (google_sub, email, display_name, avatar_url, last_login_at) "
-                        + "VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP(6)) ON DUPLICATE KEY UPDATE "
-                        + "email = VALUES(email), display_name = VALUES(display_name), "
-                        + "avatar_url = VALUES(avatar_url), last_login_at = CURRENT_TIMESTAMP(6)",
-                        principal.getName(), email, name == null || name.isBlank() ? email : name, picture);
-            }
-            userRepository.findByGoogleSub(principal.getName()).ifPresent(user -> userInfo.put("accountId",user.getId().toString()));
+            accounts.syncGoogleUser(principal).ifPresent(user -> userInfo.put("accountId", user.getId().toString()));
             userInfo.put("id", principal.getName());
             userInfo.put("name", principal.getAttribute("name"));
             userInfo.put("email", principal.getAttribute("email"));

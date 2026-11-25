@@ -2,6 +2,7 @@ package com.teamchat.realtime_chat.controller;
 
 import com.teamchat.realtime_chat.entity.User;
 import com.teamchat.realtime_chat.repository.UserRepository;
+import com.teamchat.realtime_chat.security.DesktopGoogleSignIn;
 import com.teamchat.realtime_chat.service.OtpService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,11 +35,14 @@ public class AuthController {
     private final UserRepository userRepository;
     private final OtpService otpService;
     private final PasswordEncoder passwordEncoder;
+    private final DesktopGoogleSignIn desktopGoogle;
 
-    public AuthController(UserRepository userRepository, OtpService otpService, PasswordEncoder passwordEncoder) {
+    public AuthController(UserRepository userRepository, OtpService otpService, PasswordEncoder passwordEncoder,
+            DesktopGoogleSignIn desktopGoogle) {
         this.userRepository = userRepository;
         this.otpService = otpService;
         this.passwordEncoder = passwordEncoder;
+        this.desktopGoogle = desktopGoogle;
     }
 
     /**
@@ -239,6 +243,22 @@ public class AuthController {
         // Cập nhật thời điểm đăng nhập gần nhất
         user.setLastLoginAt(LocalDateTime.now());
         userRepository.save(user);
+        return signedIn(user, servletRequest, servletResponse);
+    }
+
+    @PostMapping("/desktop/google")
+    public ResponseEntity<Map<String, Object>> desktopGoogleLogin(@RequestBody Map<String, String> request,
+            HttpServletRequest servletRequest, HttpServletResponse servletResponse) {
+        servletResponse.setHeader("Cache-Control", "no-store");
+        return desktopGoogle.exchange(request.get("code"), request.get("verifier"))
+                .flatMap(userRepository::findById)
+                .map(user -> signedIn(user, servletRequest, servletResponse))
+                .orElseGet(() -> ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
+                        "success", false, "message", "Phiên đăng nhập Google không hợp lệ hoặc đã hết hạn. Vui lòng thử lại.")));
+    }
+
+    private ResponseEntity<Map<String, Object>> signedIn(User user, HttpServletRequest servletRequest,
+            HttpServletResponse servletResponse) {
         establishSession(user, servletRequest, servletResponse);
 
         Map<String, Object> userData = new HashMap<>();
@@ -248,10 +268,8 @@ public class AuthController {
         userData.put("avatar", user.getAvatarUrl());
         userData.put("accountId",user.getId().toString());
 
-        response.put("success", true);
-        response.put("message", "Đăng nhập thành công! Chào mừng " + user.getDisplayName());
-        response.put("user", userData);
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(Map.of("success", true,
+                "message", "Đăng nhập thành công! Chào mừng " + user.getDisplayName(), "user", userData));
     }
 
     private void establishSession(User user, HttpServletRequest request, HttpServletResponse response) {

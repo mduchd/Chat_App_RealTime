@@ -108,6 +108,13 @@ public class ApiClient {
         return post("/api/auth/login", body);
     }
 
+    static ApiResponse exchangeGoogleCode(String code, String verifier) throws IOException {
+        JsonObject body = new JsonObject();
+        body.addProperty("code", code);
+        body.addProperty("verifier", verifier);
+        return post("/api/auth/desktop/google", body);
+    }
+
     /**
      * Đăng ký tài khoản mới: POST /api/auth/register
      * @param phone    Số điện thoại
@@ -228,7 +235,24 @@ public class ApiClient {
      * Đồng bộ trạng thái mới lên server: POST /api/chat/sync
      */
     public static void syncState(Map<String, Object> state) throws IOException {
-        post("/api/chat/sync", gson.toJsonTree(state).getAsJsonObject());
+        requireSuccess(post("/api/chat/sync", gson.toJsonTree(state).getAsJsonObject()));
+    }
+
+    public static String continueConversation(String conversationId) throws IOException {
+        JsonObject body = new JsonObject();
+        body.addProperty("conversationId", conversationId);
+        ApiResponse response = post("/api/chat/continue", body);
+        requireSuccess(response);
+        if (response.json == null || !response.json.has("conversationId")) {
+            throw new IOException("Máy chủ không trả về hội thoại để tiếp tục.");
+        }
+        return response.json.get("conversationId").getAsString();
+    }
+
+    private static void requireSuccess(ApiResponse response) throws IOException {
+        if (!response.success) {
+            throw new IOException(response.message != null ? response.message : "Máy chủ trả về HTTP " + response.httpCode);
+        }
     }
 
     // =====================================================================

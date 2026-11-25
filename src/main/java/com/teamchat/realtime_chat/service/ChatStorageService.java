@@ -60,9 +60,23 @@ public class ChatStorageService {
         } catch(NumberFormatException ignored) { }
         throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Unknown account");
     }
+    private static Long databaseConversationId(String key) {
+        if (!key.matches("db-[1-9][0-9]*")) return null;
+        try {
+            return Long.valueOf(key.substring(3));
+        } catch (NumberFormatException ex) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid conversation ID");
+        }
+    }
     private Map<String,Object> membership(long me,String key) {
-        var rows=db.queryForList("SELECT c.id, c.type, c.created_by, c.name, c.metadata, cm.preferences, cm.role "
-            +"FROM conversations c JOIN conversation_members cm ON cm.conversation_id=c.id WHERE cm.user_id=? AND c.external_id=? FOR UPDATE",me,key);
+        Long databaseId = databaseConversationId(key);
+        String query = "SELECT c.id, c.type, c.created_by, c.name, c.metadata, cm.preferences, cm.role "
+                + "FROM conversations c JOIN conversation_members cm ON cm.conversation_id=c.id WHERE cm.user_id=? AND ";
+        // Groups created through /api/groups use the database ID exposed by snapshot().
+        var rows = databaseId == null
+                ? db.queryForList(query + "c.external_id=? FOR UPDATE", me, key)
+                : db.queryForList(query + "c.id=? AND (c.external_id IS NULL OR c.external_id=?) FOR UPDATE",
+                        me, databaseId, key);
         if(rows.isEmpty()) throw denied();return rows.get(0);
     }
     @Transactional(readOnly=true)
@@ -130,7 +144,9 @@ public class ChatStorageService {
     }
     private void publish(long cid,Object message) {
         var destinations=db.query("SELECT u.google_sub,u.id FROM conversation_members cm JOIN users u ON cm.user_id=u.id WHERE cm.conversation_id=?",(r,n)->r.getString(1)==null?r.getString(2):r.getString(1),cid);
-        var event=Map.of("type","CHAT_UPDATED","conversationId",db.queryForObject("SELECT external_id FROM conversations WHERE id=?",String.class,cid),"message",message==null?Map.of():message);
+        String key = db.queryForObject("SELECT COALESCE(external_id, CONCAT('db-', id)) FROM conversations WHERE id=?",
+                String.class, cid);
+        var event=Map.of("type","CHAT_UPDATED","conversationId",key,"message",message==null?Map.of():message);
         // Sessions created through email/password use the database ID even for a linked Google account.
         var numeric=db.query("SELECT user_id FROM conversation_members WHERE conversation_id=?",(r,n)->r.getString(1),cid);
         Set<String> targets=new LinkedHashSet<>(destinations);targets.addAll(numeric);
@@ -160,8 +176,7 @@ public class ChatStorageService {
         String key=text(change.get("id"));
         if (key.startsWith("legacy-")) { updateLegacyPreferences(me,key,map(change.get("fields"))); return; }
         if(!key.matches("[A-Za-z0-9_-]{1,255}") || key.startsWith("legacy-")) throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
-        var found=db.queryForList("SELECT id FROM conversations WHERE external_id=?",key);
-        if(found.isEmpty()) {
+        if(databaseConversationId(key) == null && db.queryForList("SELECT id FROM conversations WHERE external_id=?",key).isEmpty()) {
             String type="GROUP".equals(change.get("type"))?"GROUP":"PRIVATE";
             Set<Long> memberIds=new LinkedHashSet<>();memberIds.add(me);
             if("PRIVATE".equals(type)) {

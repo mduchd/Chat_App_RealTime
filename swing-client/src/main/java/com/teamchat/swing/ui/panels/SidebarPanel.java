@@ -240,19 +240,14 @@ public class SidebarPanel extends RoundedPanel {
         }
     }
 
-    public void updateConversation(ConversationItem updated) {
-        for (int i = 0; i < allConversations.size(); i++) {
-            if (allConversations.get(i).getId() == updated.getId()) {
-                allConversations.set(i, updated);
-                break;
-            }
-        }
-        filterList();
+    public ConversationItem getSelectedConversation() {
+        return conversationList.getSelectedValue();
     }
 
-    public void selectConversation(long convId) {
+    public void selectConversation(String convId) {
+        setFilter("all");
         for (int i = 0; i < listModel.size(); i++) {
-            if (listModel.get(i).getId() == convId) {
+            if (listModel.get(i).getId().equals(convId)) {
                 conversationList.setSelectedIndex(i);
                 break;
             }
@@ -307,7 +302,7 @@ public class SidebarPanel extends RoundedPanel {
 
         if (currentSelected != null) {
             for (int i = 0; i < listModel.size(); i++) {
-                if (listModel.get(i).getId() == currentSelected.getId()) {
+                if (listModel.get(i).getId().equals(currentSelected.getId())) {
                     conversationList.setSelectedIndex(i);
                     break;
                 }
