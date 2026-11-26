@@ -56,10 +56,16 @@ public class MainFrame extends JFrame {
     private SidebarPanel sidebar;
     private ChatPanel chatPanel;
     private InfoDrawerPanel infoDrawer;
+    private FriendsDialog friendsDialog;
 
     private long snapshotVersion;
+    private long directChatVersion;
+    private final Map<String, ReadStatusUpdate> pendingReadUpdates = new HashMap<>();
+    private final Set<String> pendingConversationPreferences = new HashSet<>();
     private boolean loadedSnapshot;
     private String conversationToSelect;
+
+    private record ReadStatusUpdate(boolean unread, String readThrough) {}
 
     public MainFrame(UserInfo user) {
         this.currentUser = user;
@@ -111,6 +117,13 @@ public class MainFrame extends JFrame {
         // Cột trái: Danh sách hội thoại (Sidebar)
         sidebar = new SidebarPanel();
         sidebar.setOnConversationSelected(this::onConversationSelected);
+        sidebar.setOnConversationOpened(this::markConversationRead);
+        sidebar.setOnReadStatusToggle(this::toggleReadStatus);
+        sidebar.setOnPinToggle(this::togglePin);
+        sidebar.setOnMuteToggle(this::toggleMute);
+        sidebar.setOnArchiveToggle(this::toggleArchive);
+        sidebar.setOnDeleteConversation(this::deleteConversation);
+        sidebar.setOnBlockToggle(this::toggleBlock);
         sidebar.setOnCreateGroupClick(this::openCreateGroupModal);
         sidebar.setOnFriendsClick(this::openFriendsModal);
         bodyPanel.add(sidebar, BorderLayout.WEST);
@@ -126,13 +139,19 @@ public class MainFrame extends JFrame {
         chatPanel = new ChatPanel();
         chatPanel.setOnSendMessage(this::sendMessage);
         chatPanel.setOnToggleInfoDrawer(this::toggleInfoDrawer);
-        chatPanel.setOnAddMemberClick(this::openCreateGroupModal);
+        chatPanel.setOnAddMemberClick(this::openAddMembersModal);
         chatCard.add(chatPanel, BorderLayout.CENTER);
 
         // Ngăn thông tin hội thoại (mặc định ẩn giống web, bấm ⋮ để hiện)
         infoDrawer = new InfoDrawerPanel();
         infoDrawer.setVisible(false);
-        infoDrawer.setOnAddMemberClick(this::openCreateGroupModal);
+        infoDrawer.setOnPinToggle(this::togglePin);
+        infoDrawer.setOnMuteToggle(this::toggleMute);
+        infoDrawer.setOnArchiveToggle(this::toggleArchive);
+        infoDrawer.setOnRenameConversation(this::renameConversation);
+        infoDrawer.setOnDeleteConversation(this::deleteConversation);
+        infoDrawer.setOnBlockToggle(this::toggleBlock);
+        infoDrawer.setOnAddMemberClick(this::openAddMembersModal);
         chatCard.add(infoDrawer, BorderLayout.EAST);
 
         centerWrap.add(chatCard, BorderLayout.CENTER);
@@ -195,8 +214,9 @@ public class MainFrame extends JFrame {
 
             ConversationItem conversation = new ConversationItem();
             conversation.setId(id);
-            conversation.setName(value(data, "name", "Hội thoại"));
             conversation.setType(value(data, "type", "DIRECT"));
+            String nickname = conversation.isDirect() ? value(data, "nickname", "") : "";
+            conversation.setName(nickname.isBlank() ? value(data, "name", "Hội thoại") : nickname);
             conversation.setAvatarText(value(data, "avatarText", ""));
             conversation.setAvatarUrl(value(data, "avatar", value(data, "avatarUrl", "")));
             conversation.setUnreadCount(Integer.parseInt(value(data, "unreadCount", "0")));
@@ -204,6 +224,7 @@ public class MainFrame extends JFrame {
             conversation.setMuted(Boolean.parseBoolean(value(data, "muted", "false")));
             conversation.setArchived(Boolean.parseBoolean(value(data, "archived", "false")));
             conversation.setBlocked(Boolean.parseBoolean(value(data, "blocked", "false")));
+            conversation.setSendBlocked(Boolean.parseBoolean(value(data, "sendBlocked", "false")));
             conversation.setLegacyReadOnly(Boolean.parseBoolean(value(data, "legacyReadOnly", "false")));
 
             for (JsonElement memberElement : array(data, "members")) {
@@ -229,6 +250,14 @@ public class MainFrame extends JFrame {
                 messages.add(message);
             }
             ChatMessage latest = messages.isEmpty() ? null : messages.getLast();
+            ReadStatusUpdate pendingRead = pendingReadUpdates.get(id);
+            if (pendingRead != null) {
+                if (pendingRead.unread()) {
+                    conversation.setUnreadCount(Math.max(1, conversation.getUnreadCount()));
+                } else if (pendingRead.readThrough().equals(latest == null ? "" : latest.getId())) {
+                    conversation.setUnreadCount(0);
+                }
+            }
             conversation.setLastMessage(value(data, "lastMessage", latest == null ? "" : latest.getContent()));
             conversation.setLastMessageTime(value(data, "lastMessageTime", latest == null ? "" : latest.getTimeDisplay()));
             conversations.add(conversation);
@@ -271,12 +300,15 @@ public class MainFrame extends JFrame {
         }
 
         // Lắng nghe trạng thái kết nối để cập nhật màu chấm xanh trên TopBar
+        stompClient.subscribe("/user/queue/messages", (destination, body) ->
+                SwingUtilities.invokeLater(() -> handleIncomingMessage(body)));
+        stompClient.subscribe("/user/queue/friends", (destination, body) ->
+                SwingUtilities.invokeLater(this::refreshOpenFriendsDialog));
         stompClient.setConnectionListener(connected -> SwingUtilities.invokeLater(() -> {
             topBar.setWsConnected(connected);
             if (connected) {
-                stompClient.subscribe("/user/queue/messages", (destination, body) ->
-                        SwingUtilities.invokeLater(() -> handleIncomingMessage(body)));
                 if (loadedSnapshot) loadDataFromBackend();
+                refreshOpenFriendsDialog();
             }
         }));
 
@@ -289,6 +321,7 @@ public class MainFrame extends JFrame {
             JsonObject event = com.google.gson.JsonParser.parseString(json).getAsJsonObject();
             if (!"CHAT_UPDATED".equals(value(event, "type", ""))) return;
             loadDataFromBackend();
+            if (Boolean.parseBoolean(value(event, "muted", "false"))) return;
             if (event.has("message") && event.get("message").isJsonObject()) {
                 JsonObject message = event.getAsJsonObject("message");
                 String sender = value(message, "senderId", "");
@@ -305,7 +338,7 @@ public class MainFrame extends JFrame {
 
     private void sendMessage(String text) {
         ConversationItem conv = chatPanel.getCurrentConversation();
-        if (conv == null) return;
+        if (conv == null || conv.isSendBlocked()) return;
         new SwingWorker<String, Void>() {
             @Override
             protected String doInBackground() throws Exception {
@@ -330,6 +363,7 @@ public class MainFrame extends JFrame {
                 } catch (InterruptedException ex) {
                     Thread.currentThread().interrupt();
                 } catch (ExecutionException ex) {
+                    chatPanel.restoreDraftIfEmpty(conv.getId(), text);
                     JOptionPane.showMessageDialog(MainFrame.this,
                             "Không thể gửi tin nhắn. " + ex.getCause().getMessage(),
                             "Lỗi gửi tin nhắn", JOptionPane.ERROR_MESSAGE);
@@ -348,6 +382,130 @@ public class MainFrame extends JFrame {
         infoDrawer.setConversation(conv);
     }
 
+    private void togglePin(ConversationItem conversation) {
+        saveConversationPreference(conversation, "pinned", !conversation.isPinned());
+    }
+
+    private void toggleMute(ConversationItem conversation) {
+        saveConversationPreference(conversation, "muted", !conversation.isMuted());
+    }
+
+    private void toggleArchive(ConversationItem conversation) {
+        saveConversationPreference(conversation, "archived", !conversation.isArchived());
+    }
+
+    private void renameConversation(ConversationItem conversation) {
+        if (!conversation.isDirect() && !isGroupOwner(conversation)) {
+            JOptionPane.showMessageDialog(this, "Chỉ trưởng nhóm mới có thể đổi tên nhóm.",
+                    "Đổi tên hội thoại", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+        String newName = JOptionPane.showInputDialog(this, "Nhập tên mới cho hội thoại:", conversation.getName());
+        if (newName == null) return;
+
+        newName = newName.strip();
+        if (newName.isEmpty() || newName.equals(conversation.getName())) return;
+        if (newName.length() > 150) {
+            JOptionPane.showMessageDialog(this, "Tên hội thoại dài tối đa 150 ký tự.",
+                    "Đổi tên hội thoại", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+        saveConversationPreference(conversation, conversation.isDirect() ? "nickname" : "name", newName);
+    }
+
+    private void deleteConversation(ConversationItem conversation) {
+        int confirm = JOptionPane.showConfirmDialog(this,
+                "Xóa hội thoại '" + conversation.getName() + "' khỏi danh sách của bạn?",
+                "Xác nhận", JOptionPane.YES_NO_OPTION);
+        if (confirm == JOptionPane.YES_OPTION) {
+            saveConversationPreference(conversation, "hidden", true);
+        }
+    }
+
+    private void toggleBlock(ConversationItem conversation) {
+        if (conversation.isDirect()) {
+            saveConversationPreference(conversation, "blocked", !conversation.isBlocked());
+        }
+    }
+
+    private void saveConversationPreference(ConversationItem conversation, String field, Object value) {
+        String request = conversation.getId() + "/" + field;
+        if (!pendingConversationPreferences.add(request)) return;
+
+        new SwingWorker<Void, Void>() {
+            @Override
+            protected Void doInBackground() throws Exception {
+                ApiClient.syncState(Map.of("conversations", List.of(Map.of(
+                        "id", conversation.getId(), "fields", Map.of(field, value)))));
+                return null;
+            }
+
+            @Override
+            protected void done() {
+                pendingConversationPreferences.remove(request);
+                if (!isDisplayable()) return;
+                try {
+                    get();
+                    loadDataFromBackend();
+                } catch (InterruptedException ex) {
+                    Thread.currentThread().interrupt();
+                } catch (ExecutionException ex) {
+                    JOptionPane.showMessageDialog(MainFrame.this, "Không lưu được thay đổi. " + ex.getCause().getMessage(),
+                            "Lỗi cập nhật hội thoại", JOptionPane.WARNING_MESSAGE);
+                }
+            }
+        }.execute();
+    }
+
+    private void markConversationRead(ConversationItem conversation) {
+        if (conversation != null && conversation.getUnreadCount() > 0) {
+            saveReadStatus(conversation, false);
+        }
+    }
+
+    private void toggleReadStatus(ConversationItem conversation) {
+        saveReadStatus(conversation, conversation.getUnreadCount() == 0);
+    }
+
+    private void saveReadStatus(ConversationItem conversation, boolean unread) {
+        if (conversation.isLegacyReadOnly()) return;
+
+        String conversationId = conversation.getId();
+        List<ChatMessage> messages = conversation.getMessages();
+        String readThrough = messages.isEmpty() ? "" : messages.getLast().getId();
+        var update = new ReadStatusUpdate(unread, readThrough);
+        if (pendingReadUpdates.putIfAbsent(conversationId, update) != null) return;
+
+        Map<String, Object> fields = unread ? Map.of("markedUnread", true)
+                : Map.of("unreadCount", 0, "readThrough", readThrough);
+        conversation.setUnreadCount(unread ? 1 : 0);
+        sidebar.repaint();
+
+        new SwingWorker<Void, Void>() {
+            @Override
+            protected Void doInBackground() throws Exception {
+                ApiClient.syncState(Map.of("conversations", List.of(Map.of(
+                        "id", conversationId, "fields", fields))));
+                return null;
+            }
+
+            @Override
+            protected void done() {
+                pendingReadUpdates.remove(conversationId, update);
+                if (!isDisplayable()) return;
+                loadDataFromBackend();
+                try {
+                    get();
+                } catch (InterruptedException ex) {
+                    Thread.currentThread().interrupt();
+                } catch (ExecutionException ex) {
+                    JOptionPane.showMessageDialog(MainFrame.this, "Không lưu được trạng thái đọc của hội thoại.",
+                            "Lỗi cập nhật hội thoại", JOptionPane.WARNING_MESSAGE);
+                }
+            }
+        }.execute();
+    }
+
     private void toggleInfoDrawer() {
         boolean visible = !infoDrawer.isVisible();
         infoDrawer.setVisible(visible);
@@ -356,19 +514,90 @@ public class MainFrame extends JFrame {
     }
 
     private void openCreateGroupModal() {
-        CreateGroupDialog dlg = new CreateGroupDialog(this);
-        dlg.setOnGroupCreated(groupJson -> {
-            loadDataFromBackend(); // Tải lại danh sách sau khi tạo nhóm
+        openGroupDialog(null);
+    }
+
+    private void openAddMembersModal() {
+        ConversationItem group = chatPanel.getCurrentConversation();
+        if (group == null || !"GROUP".equals(group.getType())) return;
+
+        if (!isGroupOwner(group)) {
+            JOptionPane.showMessageDialog(this, "Chỉ trưởng nhóm mới có thể thêm thành viên.",
+                    "Thêm thành viên", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+        openGroupDialog(group);
+    }
+
+    private boolean isGroupOwner(ConversationItem group) {
+        return group.getMembers().stream().anyMatch(member ->
+                Objects.equals(member.getId(), currentUser.getId()) && "Trưởng nhóm".equals(member.getRole()));
+    }
+
+    private void openGroupDialog(ConversationItem group) {
+        CreateGroupDialog dialog = new CreateGroupDialog(this, group);
+        dialog.setOnGroupSaved(groupId -> {
+            conversationToSelect = groupId;
+            loadDataFromBackend();
         });
-        dlg.setVisible(true);
+        dialog.setVisible(true);
     }
 
     private void openFriendsModal() {
-        FriendsDialog dlg = new FriendsDialog(this);
-        dlg.setOnStartChatWithUser(userId -> {
-            loadDataFromBackend(); // Tải lại danh sách khi bắt đầu nhắn tin với người mới
-        });
-        dlg.setVisible(true);
+        FriendsDialog dlg = new FriendsDialog(this, currentUser.getId());
+        dlg.setOnStartChatWithUser(this::openDirectChat);
+        friendsDialog = dlg;
+        try {
+            dlg.setVisible(true);
+        } finally {
+            friendsDialog = null;
+            dlg.dispose();
+        }
+    }
+
+    private void openDirectChat(String friendId) {
+        long version = ++directChatVersion;
+        String existingId = sidebar.findDirectConversationId(friendId);
+        if (existingId != null) {
+            conversationToSelect = null;
+            sidebar.selectConversation(existingId);
+            markConversationRead(sidebar.getSelectedConversation());
+            return;
+        }
+
+        List<String> participants = List.of(currentUser.getId(), friendId).stream().sorted().toList();
+        String conversationId = "conv-" + String.join("-", participants);
+        new SwingWorker<Void, Void>() {
+            @Override
+            protected Void doInBackground() throws Exception {
+                ApiClient.syncState(Map.of("conversations", List.of(Map.of(
+                        "id", conversationId, "type", "DIRECT", "participants", participants,
+                        "fields", Map.of("hidden", false)))));
+                return null;
+            }
+
+            @Override
+            protected void done() {
+                if (!isDisplayable() || version != directChatVersion) return;
+                try {
+                    get();
+                    conversationToSelect = conversationId;
+                    loadDataFromBackend();
+                } catch (InterruptedException ex) {
+                    Thread.currentThread().interrupt();
+                } catch (ExecutionException ex) {
+                    JOptionPane.showMessageDialog(MainFrame.this,
+                            "Không thể mở hội thoại. " + ex.getCause().getMessage(),
+                            "Lỗi mở hội thoại", JOptionPane.ERROR_MESSAGE);
+                }
+            }
+        }.execute();
+    }
+
+    private void refreshOpenFriendsDialog() {
+        if (friendsDialog != null && friendsDialog.isDisplayable()) {
+            friendsDialog.refreshFriendships();
+        }
     }
 
     private void openSettingsModal() {

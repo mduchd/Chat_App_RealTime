@@ -6,6 +6,20 @@ Mã nguồn được chia theo chức năng trong `src/main/java/com/teamchat/re
 
 Xem [README_DOCKER.md](README_DOCKER.md) để biết trạng thái cấu hình Docker.
 
+## Chạy Swing trong NetBeans
+
+1. Mở dự án Maven ở thư mục gốc. Chạy `com.teamchat.realtime_chat.RealtimeChatApplication` với đối số `--spring.profiles.active=swing-local`. Từ PowerShell, có thể dùng:
+
+   ```powershell
+   .\mvnw.cmd spring-boot:run "-Dspring-boot.run.profiles=swing-local"
+   ```
+
+2. Khi máy chủ đã chạy trên `127.0.0.1:8080`, chạy lớp `com.teamchat.swing.ChatSpaceApp` trong NetBeans. Lớp này cũng có trong dự án Maven `swing-client`.
+
+Đăng ký và đăng nhập bằng email và mật khẩu. Tài khoản và tin nhắn local được lưu riêng trong cơ sở dữ liệu H2 tại `~/.chatspace/`. Profile `swing-local` mở API đăng ký đơn giản chỉ cho ứng dụng trên cùng máy. Bản web dùng profile mặc định và xác thực OTP khi đăng ký.
+
+H2 của Swing có 5 bảng nghiệp vụ và 3 bảng cho phiên đăng nhập và lịch sử migration. Khi nâng cấp database local từ bản 12 bảng, hãy dừng backend và sao lưu `~/.chatspace/chat.mv.db` trước khi chạy Flyway. Migration local bỏ các bảng tùy chọn web, lịch sử thông báo, chống trùng thông báo trình duyệt và dữ liệu nhập từ web cũ.
+
 ## Triển khai Vercel
 
 Production: https://realtime-chat-six-sand.vercel.app

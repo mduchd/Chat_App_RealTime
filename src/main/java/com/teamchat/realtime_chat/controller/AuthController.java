@@ -6,6 +6,7 @@ import com.teamchat.realtime_chat.security.DesktopGoogleSignIn;
 import com.teamchat.realtime_chat.service.OtpService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -23,6 +24,7 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 
@@ -163,15 +165,9 @@ public class AuthController {
         }
 
         try {
-            User newUser = new User();
-            newUser.setPhone(cleanPhone);
-            newUser.setEmail(cleanEmail);
-            newUser.setDisplayName(displayName.trim());
-            newUser.setPasswordHash(passwordEncoder.encode(password));
-            newUser.setAvatarUrl("https://ui-avatars.com/api/?name=" + URLEncoder.encode(displayName.trim(), StandardCharsets.UTF_8) + "&background=1d72b8&color=fff&bold=true");
-            newUser.setLastLoginAt(LocalDateTime.now());
-
-            User savedUser = userRepository.save(newUser);
+            String avatar = "https://ui-avatars.com/api/?name="
+                    + URLEncoder.encode(displayName.trim(), StandardCharsets.UTF_8) + "&background=1d72b8&color=fff&bold=true";
+            User savedUser = createAccount(cleanEmail, password, displayName.trim(), cleanPhone, avatar);
             establishSession(savedUser, servletRequest, servletResponse);
 
             Map<String, Object> userData = new HashMap<>();
@@ -191,6 +187,39 @@ public class AuthController {
             response.put("message", "Có lỗi xảy ra trong quá trình tạo tài khoản. Vui lòng thử lại!");
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
+    }
+
+    ResponseEntity<Map<String, Object>> registerLocal(String email, String password,
+            HttpServletRequest request, HttpServletResponse response) {
+        String cleanEmail = email == null ? "" : email.trim().toLowerCase(Locale.ROOT);
+        int at = cleanEmail.indexOf('@');
+        if (cleanEmail.length() > 255 || at > 150 || !cleanEmail.matches("[^\\s@]+@[^\\s@]+")) {
+            return ResponseEntity.badRequest().body(Map.of("success", false, "message", "Nhập email hợp lệ."));
+        }
+        if (password == null || password.isBlank() || password.length() < 6
+                || password.getBytes(StandardCharsets.UTF_8).length > 72) {
+            return ResponseEntity.badRequest().body(Map.of("success", false,
+                    "message", "Dùng mật khẩu từ 6 ký tự và tối đa 72 byte UTF-8."));
+        }
+        User user;
+        try {
+            user = createAccount(cleanEmail, password, cleanEmail.substring(0, at), null, null);
+        } catch (DataIntegrityViolationException ex) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(Map.of("success", false, "message", "Email này đã được đăng ký."));
+        }
+        return signedIn(user, request, response);
+    }
+
+    private User createAccount(String email, String password, String name, String phone, String avatar) {
+        User user = new User();
+        user.setEmail(email);
+        user.setPasswordHash(passwordEncoder.encode(password));
+        user.setDisplayName(name);
+        user.setPhone(phone);
+        user.setAvatarUrl(avatar);
+        user.setLastLoginAt(LocalDateTime.now());
+        return userRepository.save(user);
     }
 
     /**
@@ -215,7 +244,7 @@ public class AuthController {
             return ResponseEntity.badRequest().body(response);
         }
 
-        String cleanEmail = email.trim().toLowerCase();
+        String cleanEmail = email.trim().toLowerCase(Locale.ROOT);
         Optional<User> userOpt = userRepository.findByEmail(cleanEmail);
 
         // BẮT BUỘC: Người dùng phải đăng ký mới đăng nhập được, tài khoản chưa đăng ký sẽ bị chặn!

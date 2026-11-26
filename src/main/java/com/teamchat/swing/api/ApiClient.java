@@ -32,8 +32,7 @@ import java.util.concurrent.TimeUnit;
  */
 public class ApiClient {
 
-    // Địa chỉ Backend mặc định (có thể đổi qua ApiClient.setBaseUrl(...))
-    private static final String DEFAULT_BASE_URL = "http://localhost:8080";
+    private static final String DEFAULT_BASE_URL = "http://127.0.0.1:8080";
     private static String baseUrl = DEFAULT_BASE_URL;
 
     private static final Gson gson = new Gson();
@@ -98,7 +97,7 @@ public class ApiClient {
 
     /**
      * Đăng nhập: POST /api/auth/login
-     * @param email    Gmail của người dùng
+     * @param email    Email của người dùng
      * @param password Mật khẩu
      */
     public static ApiResponse login(String email, String password) throws IOException {
@@ -115,43 +114,11 @@ public class ApiClient {
         return post("/api/auth/desktop/google", body);
     }
 
-    /**
-     * Đăng ký tài khoản mới: POST /api/auth/register
-     * @param phone    Số điện thoại
-     * @param email    Gmail
-     * @param password Mật khẩu
-     * @param otp      Mã xác thực 6 số gửi qua Gmail
-     */
-    public static ApiResponse register(String phone, String email, String password, String otp) throws IOException {
+    public static ApiResponse registerLocal(String email, String password) throws IOException {
         JsonObject body = new JsonObject();
-        body.addProperty("phone", phone);
         body.addProperty("email", email);
         body.addProperty("password", password);
-        body.addProperty("otp", otp);
-        return post("/api/auth/register", body);
-    }
-
-    /**
-     * Gửi mã OTP xác thực qua Gmail: POST /api/auth/send-otp
-     * @param email   Địa chỉ Gmail nhận mã
-     * @param purpose Mục đích: "REGISTER" hoặc "FORGOT_PASSWORD"
-     */
-    public static ApiResponse sendOtp(String email, String purpose) throws IOException {
-        JsonObject body = new JsonObject();
-        body.addProperty("email", email);
-        body.addProperty("purpose", purpose);
-        return post("/api/auth/send-otp", body);
-    }
-
-    /**
-     * Quên mật khẩu / Đặt lại mật khẩu mới: POST /api/auth/forgot-password
-     */
-    public static ApiResponse forgotPassword(String email, String otp, String newPassword) throws IOException {
-        JsonObject body = new JsonObject();
-        body.addProperty("email", email);
-        body.addProperty("otp", otp);
-        body.addProperty("newPassword", newPassword);
-        return post("/api/auth/forgot-password", body);
+        return post("/api/auth/local/register", body);
     }
 
     /**
@@ -236,6 +203,10 @@ public class ApiClient {
      */
     public static void syncState(Map<String, Object> state) throws IOException {
         requireSuccess(post("/api/chat/sync", gson.toJsonTree(state).getAsJsonObject()));
+    }
+
+    public static void addMembersToGroup(String groupId, List<String> memberIds) throws IOException {
+        syncState(Map.of("conversations", List.of(Map.of("id", groupId, "addMembers", memberIds))));
     }
 
     public static String continueConversation(String conversationId) throws IOException {
@@ -325,14 +296,14 @@ public class ApiClient {
     public static void sendFriendRequest(String userId) throws IOException {
         JsonObject body = new JsonObject();
         body.addProperty("userId", userId);
-        post("/api/friends/requests", body);
+        requireSuccess(post("/api/friends/requests", body));
     }
 
     /**
      * Chấp nhận lời mời kết bạn: POST /api/friends/requests/{id}/accept
      */
     public static void acceptFriendRequest(long requestId) throws IOException {
-        post("/api/friends/requests/" + requestId + "/accept", new JsonObject());
+        requireSuccess(post("/api/friends/requests/" + requestId + "/accept", new JsonObject()));
     }
 
     /**
@@ -455,9 +426,6 @@ public class ApiClient {
                 if (json.has("message")) {
                     apiResponse.message = json.get("message").getAsString();
                 }
-                if (json.has("devOtp") && !json.get("devOtp").isJsonNull()) {
-                    apiResponse.devOtp = json.get("devOtp").getAsString();
-                }
                 if (json.has("user")) {
                     apiResponse.user = gson.fromJson(json.get("user"), UserInfo.class);
                 }
@@ -491,7 +459,6 @@ public class ApiClient {
         public int httpCode;
         public boolean success;
         public String message;
-        public String devOtp;
         public String rawBody;
         public JsonObject json;
         public UserInfo user;

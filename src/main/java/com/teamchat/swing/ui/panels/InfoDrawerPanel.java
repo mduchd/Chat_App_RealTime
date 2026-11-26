@@ -23,6 +23,7 @@ public class InfoDrawerPanel extends JPanel {
     private final JLabel statusLabel;
 
     private final JButton btnPin;
+    private final JButton btnBlock;
     private final JButton btnMute;
     private final JButton btnArchive;
 
@@ -30,7 +31,12 @@ public class InfoDrawerPanel extends JPanel {
     private final JPanel membersListPanel;
     private final JLabel memberCountLabel;
 
-    private Consumer<ConversationItem> onActionCallback;
+    private Consumer<ConversationItem> onArchiveToggle;
+    private Consumer<ConversationItem> onRenameConversation;
+    private Consumer<ConversationItem> onDeleteConversation;
+    private Consumer<ConversationItem> onPinToggle;
+    private Consumer<ConversationItem> onMuteToggle;
+    private Consumer<ConversationItem> onBlockToggle;
     private Runnable onAddMemberClick;
 
     public InfoDrawerPanel() {
@@ -145,27 +151,19 @@ public class InfoDrawerPanel extends JPanel {
 
         JButton btnRename = createListActionBtn(VectorIcon.Type.SETTINGS, "Đổi tên hội thoại", UITheme.TEXT_MAIN);
         btnRename.addActionListener(e -> {
-            if (conversation == null) return;
-            String newName = JOptionPane.showInputDialog(this, "Nhập tên mới cho hội thoại:", conversation.getName());
-            if (newName != null && !newName.trim().isEmpty()) {
-                conversation.setName(newName.trim());
-                nameLabel.setText(conversation.getName());
-                avatar.setText(conversation.getDisplayInitials());
-                if (onActionCallback != null) onActionCallback.accept(conversation);
-            }
+            if (conversation != null && onRenameConversation != null) onRenameConversation.accept(conversation);
         });
 
-        JButton btnBlock = createListActionBtn(VectorIcon.Type.BLOCK, "Chặn hội thoại", UITheme.DANGER_RED);
+        btnBlock = createListActionBtn(VectorIcon.Type.BLOCK, "Chặn hội thoại", UITheme.DANGER_RED);
         btnBlock.addActionListener(e -> {
-            JOptionPane.showMessageDialog(this, "Đã cập nhật trạng thái chặn hội thoại.", "Thông báo", JOptionPane.INFORMATION_MESSAGE);
+            if (conversation != null && conversation.isDirect() && onBlockToggle != null) {
+                onBlockToggle.accept(conversation);
+            }
         });
 
         JButton btnDelete = createListActionBtn(VectorIcon.Type.TRASH, "Xóa hội thoại", UITheme.DANGER_RED);
         btnDelete.addActionListener(e -> {
-            int confirm = JOptionPane.showConfirmDialog(this, "Bạn có chắc muốn xóa hội thoại này?", "Xác nhận", JOptionPane.YES_NO_OPTION);
-            if (confirm == JOptionPane.YES_OPTION && onActionCallback != null && conversation != null) {
-                onActionCallback.accept(conversation);
-            }
+            if (conversation != null && onDeleteConversation != null) onDeleteConversation.accept(conversation);
         });
 
         bottomActions.add(btnRename);
@@ -192,6 +190,8 @@ public class InfoDrawerPanel extends JPanel {
         statusLabel.setText(isGroup ? "Nhóm chat" : "Đang hoạt động");
 
         btnPin.setText(item.isPinned() ? "Bỏ ghim" : "Ghim");
+        btnBlock.setVisible(item.isDirect());
+        btnBlock.setText(item.isBlocked() ? "Bỏ chặn hội thoại" : "Chặn hội thoại");
         btnMute.setText(item.isMuted() ? "Bật TB" : "Tắt TB");
         btnArchive.setText(item.isArchived() ? "Bỏ LT" : "Lưu trữ");
 
@@ -223,24 +223,15 @@ public class InfoDrawerPanel extends JPanel {
     }
 
     private void togglePin() {
-        if (conversation != null) {
-            conversation.setPinned(!conversation.isPinned());
-            btnPin.setText(conversation.isPinned() ? "Bỏ ghim" : "Ghim");
-        }
+        if (conversation != null && onPinToggle != null) onPinToggle.accept(conversation);
     }
 
     private void toggleMute() {
-        if (conversation != null) {
-            conversation.setMuted(!conversation.isMuted());
-            btnMute.setText(conversation.isMuted() ? "Bật TB" : "Tắt TB");
-        }
+        if (conversation != null && onMuteToggle != null) onMuteToggle.accept(conversation);
     }
 
     private void toggleArchive() {
-        if (conversation != null) {
-            conversation.setArchived(!conversation.isArchived());
-            btnArchive.setText(conversation.isArchived() ? "Bỏ LT" : "Lưu trữ");
-        }
+        if (conversation != null && onArchiveToggle != null) onArchiveToggle.accept(conversation);
     }
 
     private JButton createQuickActionBtn(VectorIcon.Type type, String label) {
@@ -273,6 +264,12 @@ public class InfoDrawerPanel extends JPanel {
     }
 
     public void setOnAddMemberClick(Runnable callback) { this.onAddMemberClick = callback; }
+    public void setOnPinToggle(Consumer<ConversationItem> callback) { this.onPinToggle = callback; }
+    public void setOnMuteToggle(Consumer<ConversationItem> callback) { this.onMuteToggle = callback; }
+    public void setOnArchiveToggle(Consumer<ConversationItem> callback) { this.onArchiveToggle = callback; }
+    public void setOnRenameConversation(Consumer<ConversationItem> callback) { this.onRenameConversation = callback; }
+    public void setOnDeleteConversation(Consumer<ConversationItem> callback) { this.onDeleteConversation = callback; }
+    public void setOnBlockToggle(Consumer<ConversationItem> callback) { this.onBlockToggle = callback; }
 
     public void applyTheme() {
         setBackground(UITheme.WINDOW_BG);

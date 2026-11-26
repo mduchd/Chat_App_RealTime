@@ -1,5 +1,9 @@
 /target/
 /realtime_chat/target/
+/.vs/
+/swing-client/target/
+/swing-client/dependency-reduced-pom.xml
+/tmp/
 .env
 .env.*
 !.env.example

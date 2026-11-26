@@ -16,6 +16,7 @@ public class ConversationItem {
     private boolean muted;
     private boolean archived;
     private boolean blocked;
+    private boolean sendBlocked;
     private boolean legacyReadOnly;
     private List<ChatMessage> messages = new ArrayList<>();
     private List<MemberInfo> members = new ArrayList<>();
@@ -24,6 +25,7 @@ public class ConversationItem {
     public void setId(String id) { this.id = id; }
     public String getType() { return type; }
     public void setType(String type) { this.type = type; }
+    public boolean isDirect() { return "DIRECT".equals(type) || "PRIVATE".equals(type); }
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }
     public String getAvatarText() { return avatarText; }
@@ -44,6 +46,8 @@ public class ConversationItem {
     public void setArchived(boolean archived) { this.archived = archived; }
     public boolean isBlocked() { return blocked; }
     public void setBlocked(boolean blocked) { this.blocked = blocked; }
+    public boolean isSendBlocked() { return isDirect() && (blocked || sendBlocked); }
+    public void setSendBlocked(boolean sendBlocked) { this.sendBlocked = sendBlocked; }
     public boolean isLegacyReadOnly() { return legacyReadOnly; }
     public void setLegacyReadOnly(boolean legacyReadOnly) { this.legacyReadOnly = legacyReadOnly; }
     public List<ChatMessage> getMessages() { return messages; }
