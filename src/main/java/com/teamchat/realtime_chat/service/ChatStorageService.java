@@ -6,6 +6,7 @@ import com.teamchat.realtime_chat.security.AccountIdentity;
 import java.security.Principal;
 import java.sql.Timestamp;
 import java.util.*;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -21,10 +22,16 @@ public class ChatStorageService {
     private final ObjectMapper json;
     private final AccountIdentity identity;
     private final SimpMessagingTemplate bus;
+    private final boolean webStorageEnabled;
+    private final boolean directOnlyBlocking;
     private static final Set<String> PERSONAL = Set.of("nickname", "pinned", "muted", "archived", "blocked", "unreadCount", "hidden");
     private static final Set<String> SHARED = Set.of("themeColor", "quickEmoji", "avatarText", "topic");
-    public ChatStorageService(JdbcTemplate db, ObjectMapper json, AccountIdentity identity, SimpMessagingTemplate bus) {
+    public ChatStorageService(JdbcTemplate db, ObjectMapper json, AccountIdentity identity, SimpMessagingTemplate bus,
+            @Value("${chat.storage.web-features:true}") boolean webStorageEnabled,
+            @Value("${chat.storage.direct-only-blocking:false}") boolean directOnlyBlocking) {
         this.db=db; this.json=json; this.identity=identity; this.bus=bus;
+        this.webStorageEnabled = webStorageEnabled;
+        this.directOnlyBlocking = directOnlyBlocking;
     }
     private Map<String,Object> object(String value) {
         if(value==null || value.isBlank()) return new LinkedHashMap<>();
@@ -91,21 +98,42 @@ public class ChatStorageService {
             if(Boolean.TRUE.equals(prefs.get("hidden"))) continue;
             Map<String,Object> conv=object(text(row.get("metadata")));
             String key=row.get("external_id")==null?"db-"+cid:text(row.get("external_id"));
-            conv.put("id",key);conv.put("type","PRIVATE".equals(row.get("type"))?"DIRECT":"GROUP");
+            boolean direct = "PRIVATE".equals(row.get("type"));
+            conv.put("id",key);conv.put("type",direct?"DIRECT":"GROUP");
             conv.put("roomId",key);conv.put("sharedFiles",List.of());conv.put("messages",messages(cid));
-            List<Map<String,Object>> members=db.query("SELECT user_id,role FROM conversation_members WHERE conversation_id=? ORDER BY id",(r,n)->{
-                var member=account(r.getLong(1));member.put("role","OWNER".equals(r.getString(2))?"Trưởng nhóm":"Thành viên");return member;
-            },cid);
+            List<Map<String,Object>> members = new ArrayList<>();
+            boolean sendBlocked = false;
+            for (var memberRow : db.queryForList(
+                    "SELECT user_id,role,preferences FROM conversation_members WHERE conversation_id=? ORDER BY id", cid)) {
+                var member = account(number(memberRow.get("user_id")));
+                member.put("role", "OWNER".equals(memberRow.get("role")) ? "Trưởng nhóm" : "Thành viên");
+                members.add(member);
+                if (directOnlyBlocking && direct && Boolean.TRUE.equals(object(text(memberRow.get("preferences"))).get("blocked"))) {
+                    sendBlocked = true;
+                }
+            }
             conv.put("members",members);conv.put("participants",members.stream().map(m->m.get("id")).toList());
             conv.put("name",row.get("name"));
-            if("DIRECT".equals(conv.get("type"))) {
+            if(direct) {
                 var partner=members.stream().filter(m->!text(m.get("id")).equals(text(account(me).get("id")))).findFirst().orElse(account(me));
                 conv.put("name",partner.get("name"));conv.put("avatar",partner.get("avatar"));conv.put("contactId",partner.get("id"));
             }
             conv.put("statusText","GROUP".equals(conv.get("type"))?members.size()+" thành viên":"");
             long lastRead=row.get("last_read_message_id")==null?0:number(row.get("last_read_message_id"));
             long unread=db.queryForObject("SELECT COUNT(*) FROM messages WHERE conversation_id=? AND sender_id<>? AND id>?",Long.class,cid,me,lastRead);
-            conv.put("unreadCount",unread);conv.putAll(prefs);conversations.add(conv);
+            if (!webStorageEnabled) {
+                prefs.remove("unreadCount");
+                if (Boolean.TRUE.equals(prefs.get("markedUnread"))) unread = Math.max(1, unread);
+            }
+            conv.put("unreadCount",unread);conv.putAll(prefs);
+            if (directOnlyBlocking) {
+                conv.put("sendBlocked", sendBlocked);
+                if (!direct) conv.remove("blocked");
+            }
+            conversations.add(conv);
+        }
+        if (!webStorageEnabled) {
+            return Map.of("conversations", conversations, "settings", Map.of(), "notifications", List.of());
         }
         var imports=db.query("SELECT payload FROM legacy_chat_imports WHERE user_id=? ORDER BY created_at",(r,n)->object(r.getString(1)),me);
         for(var archive:imports) for(var old:list(archive.get("conversations"))) {
@@ -142,22 +170,42 @@ public class ChatStorageService {
             message.put("content",r.getString("content"));message.put("timestamp",r.getTimestamp("created_at").toInstant().toString());return message;
         },cid);
     }
+    private record ChatRecipient(String googleSub, String id, boolean muted) {}
+
     private void publish(long cid,Object message) {
-        var destinations=db.query("SELECT u.google_sub,u.id FROM conversation_members cm JOIN users u ON cm.user_id=u.id WHERE cm.conversation_id=?",(r,n)->r.getString(1)==null?r.getString(2):r.getString(1),cid);
         String key = db.queryForObject("SELECT COALESCE(external_id, CONCAT('db-', id)) FROM conversations WHERE id=?",
                 String.class, cid);
-        var event=Map.of("type","CHAT_UPDATED","conversationId",key,"message",message==null?Map.of():message);
-        // Sessions created through email/password use the database ID even for a linked Google account.
-        var numeric=db.query("SELECT user_id FROM conversation_members WHERE conversation_id=?",(r,n)->r.getString(1),cid);
-        Set<String> targets=new LinkedHashSet<>(destinations);targets.addAll(numeric);
-        Runnable send=()->targets.forEach(id->bus.convertAndSendToUser(id,"/queue/messages",event));
+        Map<String, Object> event = Map.of("type", "CHAT_UPDATED", "conversationId", key,
+                "message", message == null ? Map.of() : message);
+        Map<String, Object> mutedEvent = new LinkedHashMap<>(event);
+        mutedEvent.put("muted", true);
+        var recipients = db.query("SELECT u.google_sub,u.id,cm.preferences FROM conversation_members cm "
+                        + "JOIN users u ON cm.user_id=u.id WHERE cm.conversation_id=?",
+                (r, n) -> new ChatRecipient(r.getString(1), r.getString(2), !webStorageEnabled && message != null
+                        && Boolean.TRUE.equals(object(r.getString(3)).get("muted"))), cid);
+        Map<String, Map<String, Object>> targets = new LinkedHashMap<>();
+        // Local sessions use the numeric ID even when the account also has a Google subject.
+        for (var recipient : recipients) {
+            var payload = recipient.muted() ? mutedEvent : event;
+            if (recipient.googleSub() != null) {
+                targets.putIfAbsent(recipient.googleSub(), payload);
+            }
+            targets.put(recipient.id(), payload);
+        }
+        Runnable send = () -> targets.forEach((id, payload) -> bus.convertAndSendToUser(id, "/queue/messages", payload));
         if(TransactionSynchronizationManager.isSynchronizationActive()) TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization(){@Override public void afterCommit(){send.run();}});
         else send.run();
     }
+
+    public void publishConversationUpdate(long conversationId) {
+        publish(conversationId, null);
+    }
+
     @Transactional
     public void sync(Principal principal,Map<String,Object> request) {
         long me=identity.id(principal);
         for(var change:list(request.get("conversations"))) syncConversation(me,change);
+        if (!webStorageEnabled) return;
         if(request.containsKey("settings")) {
             var old=db.query("SELECT settings FROM user_preferences WHERE user_id=?",(r,n)->object(r.getString(1)),me);
             var settings=old.isEmpty()?new LinkedHashMap<String,Object>():old.get(0);
@@ -174,9 +222,12 @@ public class ChatStorageService {
     private void syncConversation(long me,Map<String,Object> change) {
         if (text(change.get("name")).length()>150 || text(map(change.get("fields")).get("name")).length()>150) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Conversation name is too long");
         String key=text(change.get("id"));
+        boolean addMembers = change.containsKey("addMembers");
         if (key.startsWith("legacy-")) { updateLegacyPreferences(me,key,map(change.get("fields"))); return; }
         if(!key.matches("[A-Za-z0-9_-]{1,255}") || key.startsWith("legacy-")) throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
-        if(databaseConversationId(key) == null && db.queryForList("SELECT id FROM conversations WHERE external_id=?",key).isEmpty()) {
+        Long databaseId = databaseConversationId(key);
+        if(databaseId == null && db.queryForList("SELECT id FROM conversations WHERE external_id=?",key).isEmpty()) {
+            if (addMembers) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy nhóm chat.");
             String type="GROUP".equals(change.get("type"))?"GROUP":"PRIVATE";
             Set<Long> memberIds=new LinkedHashSet<>();memberIds.add(me);
             if("PRIVATE".equals(type)) {
@@ -189,38 +240,72 @@ public class ChatStorageService {
             long cid=db.queryForObject("SELECT id FROM conversations WHERE external_id=?",Long.class,key);
             for(long member:memberIds)db.update("INSERT INTO conversation_members(conversation_id,user_id,role) VALUES (?,?,?) ON DUPLICATE KEY UPDATE user_id=VALUES(user_id)",cid,member,member==me?"OWNER":"MEMBER");
         }
+        if (!webStorageEnabled) {
+            // A simultaneous send and preference update must read and write the same current member preferences.
+            if (databaseId == null) {
+                db.queryForList("SELECT id FROM conversations WHERE external_id=? FOR UPDATE", key);
+            } else {
+                db.queryForList("SELECT id FROM conversations WHERE id=? FOR UPDATE", databaseId);
+            }
+        }
         var row=membership(me,key);long cid=number(row.get("id"));
         Map<String,Object> fields=map(change.get("fields"));var prefs=object(text(row.get("preferences")));var meta=object(text(row.get("metadata")));
+        boolean group = "GROUP".equals(row.get("type"));
+        if (addMembers && !group) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Chỉ có thể thêm thành viên vào nhóm chat.");
+        }
+        boolean enforceBlocking = !directOnlyBlocking || "PRIVATE".equals(row.get("type"));
+        if (!enforceBlocking && Boolean.TRUE.equals(fields.get("blocked"))) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Chỉ có thể chặn hội thoại riêng.");
+        }
         for(var entry:fields.entrySet()) {
             if(PERSONAL.contains(entry.getKey())) prefs.put(entry.getKey(),entry.getValue());
             if(SHARED.contains(entry.getKey())) meta.put(entry.getKey(),entry.getValue());
         }
+        if (!webStorageEnabled && Boolean.TRUE.equals(fields.get("markedUnread"))) {
+            prefs.put("markedUnread", true);
+        }
         if(fields.containsKey("unreadCount") && number(fields.get("unreadCount"))==0) {
             var readIds=fields.containsKey("readThrough")
-                ? db.query("SELECT id FROM messages WHERE conversation_id=? AND external_id=?",(r,n)->r.getLong(1),cid,text(fields.get("readThrough")))
+                ? db.query("SELECT id FROM messages WHERE conversation_id=? AND COALESCE(external_id, CONCAT('db-msg-', id))=?",
+                        (r,n)->r.getLong(1),cid,text(fields.get("readThrough")))
                 : db.query("SELECT MAX(id) FROM messages WHERE conversation_id=?",(r,n)->r.getLong(1),cid);
-            if(!readIds.isEmpty() && readIds.get(0)>0) db.update("UPDATE conversation_members SET last_read_message_id=? WHERE conversation_id=? AND user_id=?",readIds.get(0),cid,me);
+            if(!readIds.isEmpty() && readIds.get(0)>0) {
+                long readId = readIds.get(0);
+                db.update("UPDATE conversation_members SET last_read_message_id=? WHERE conversation_id=? AND user_id=? "
+                                + "AND (last_read_message_id IS NULL OR last_read_message_id<?)", readId, cid, me, readId);
+            }
             prefs.remove("unreadCount");
+            if (!webStorageEnabled) prefs.remove("markedUnread");
         }
         db.update("UPDATE conversation_members SET preferences=? WHERE conversation_id=? AND user_id=?",encode(prefs),cid,me);
         db.update("UPDATE conversations SET metadata=? WHERE id=?",encode(meta),cid);
         boolean owner=number(row.get("created_by"))==me;
-        if(fields.containsKey("name") && "GROUP".equals(row.get("type"))) {
+        if(fields.containsKey("name") && group) {
             if(!owner) throw denied();
             db.update("UPDATE conversations SET name=? WHERE id=?",text(fields.get("name")),cid);
         }
-        if(change.containsKey("members") && "GROUP".equals(row.get("type"))) {
+        boolean replaceMembers = change.containsKey("members");
+        if (group && (replaceMembers || addMembers)) {
             if(!owner) throw denied();
             Set<Long> wanted=new LinkedHashSet<>();wanted.add(me);
             for(var member:list(change.get("members")))wanted.add(accountId(text(member.get("id"))));
+            if (addMembers) {
+                if (!(change.get("addMembers") instanceof List<?> ids) || ids.isEmpty()) {
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Chọn ít nhất một thành viên.");
+                }
+                for (Object id : ids) wanted.add(accountId(text(id)));
+            }
             for(long id:wanted)db.update("INSERT INTO conversation_members(conversation_id,user_id,role) VALUES (?,?,?) ON DUPLICATE KEY UPDATE user_id=VALUES(user_id)",cid,id,id==me?"OWNER":"MEMBER");
-            var previous=db.query("SELECT user_id FROM conversation_members WHERE conversation_id=?",(r,n)->r.getLong(1),cid);
-            for(long id:previous)if(!wanted.contains(id))db.update("DELETE FROM conversation_members WHERE conversation_id=? AND user_id=?",cid,id);
+            if (replaceMembers) {
+                var previous=db.query("SELECT user_id FROM conversation_members WHERE conversation_id=?",(r,n)->r.getLong(1),cid);
+                for(long id:previous)if(!wanted.contains(id))db.update("DELETE FROM conversation_members WHERE conversation_id=? AND user_id=?",cid,id);
+            }
         }
-        for(var message:list(change.get("messages")))saveMessage(me,cid,key,message);
+        for(var message:list(change.get("messages")))saveMessage(me,cid,key,message,enforceBlocking);
         publish(cid,null);
     }
-    private void saveMessage(long me,long cid,String key,Map<String,Object> incoming) {
+    private void saveMessage(long me,long cid,String key,Map<String,Object> incoming,boolean enforceBlocking) {
         String id=text(incoming.get("id"));if(!id.matches("[A-Za-z0-9_-]{1,64}")) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Invalid message id");
         var found=db.queryForList("SELECT id,sender_id,metadata FROM messages WHERE external_id=? AND conversation_id=? FOR UPDATE",id,cid);
         if(!found.isEmpty()) {
@@ -236,25 +321,36 @@ public class ChatStorageService {
         if(!text(account(me).get("id")).equals(text(incoming.get("senderId"))))throw denied();
         // A blocked recipient must not receive or persist new incoming messages.
         var memberPrefs=db.query("SELECT user_id,preferences FROM conversation_members WHERE conversation_id=?",(r,n)->Map.of("user",r.getLong(1),"prefs",object(r.getString(2))),cid);
-        if(memberPrefs.stream().anyMatch(p->Boolean.TRUE.equals(map(p.get("prefs")).get("blocked"))))throw denied();
+        if (enforceBlocking && memberPrefs.stream().anyMatch(p -> Boolean.TRUE.equals(map(p.get("prefs")).get("blocked")))) {
+            if (directOnlyBlocking) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Hội thoại đang bị chặn.");
+            }
+            throw denied();
+        }
         String content=text(incoming.get("content"));
         if ((content.isBlank() && !incoming.containsKey("imageUrl")) || content.getBytes(java.nio.charset.StandardCharsets.UTF_8).length>65000) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Invalid message content");
         Map<String,Object> metadata=new LinkedHashMap<>();
         for(String field:List.of("replyTo","imageUrl","imageData","fileData","fileName","fileSize","fileType","isSystemNotice","sidebarPreview"))if(incoming.containsKey(field))metadata.put(field,incoming.get(field));
         db.update("INSERT INTO messages(conversation_id,sender_id,content,external_id,metadata) VALUES (?,?,?,?,?)",cid,me,text(incoming.get("content")),id,encode(metadata));
         var message=messages(cid).stream().filter(m->id.equals(m.get("id"))).findFirst().orElseThrow();
-        var sender=account(me);
         for(var recipient:memberPrefs) {
             long uid=number(recipient.get("user"));if(uid==me)continue;
-            var notification=new LinkedHashMap<String,Object>();notification.put("id","message-"+id);notification.put("conversationId",key);
-            notification.put("title","GROUP".equals(db.queryForObject("SELECT type FROM conversations WHERE id=?",String.class,cid))?db.queryForObject("SELECT name FROM conversations WHERE id=?",String.class,cid):sender.get("name"));
-            notification.put("content",text(sender.get("name"))+": "+text(message.get("content")));notification.put("unread",true);notification.put("type","message");notification.put("time","Vừa xong");
-            db.update("INSERT INTO user_notifications(user_id,notification_id,payload) VALUES (?,?,?)",uid,"message-"+id,encode(notification));
+            if (webStorageEnabled) {
+                var notification=new LinkedHashMap<String,Object>();notification.put("id","message-"+id);notification.put("conversationId",key);
+                notification.put("title","GROUP".equals(db.queryForObject("SELECT type FROM conversations WHERE id=?",String.class,cid))?db.queryForObject("SELECT name FROM conversations WHERE id=?",String.class,cid):message.get("senderName"));
+                notification.put("content",text(message.get("senderName"))+": "+text(message.get("content")));notification.put("unread",true);notification.put("type","message");notification.put("time","Vừa xong");
+                db.update("INSERT INTO user_notifications(user_id,notification_id,payload) VALUES (?,?,?)",uid,"message-"+id,encode(notification));
+            }
             var pref=map(recipient.get("prefs"));pref.remove("unreadCount");pref.remove("hidden");db.update("UPDATE conversation_members SET preferences=? WHERE conversation_id=? AND user_id=?",encode(pref),cid,uid);
         }
         publish(cid,message);
     }
+    private void requireWebStorage() {
+        if (!webStorageEnabled) throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+    }
+
     private void updateLegacyPreferences(long me,String key,Map<String,Object> fields) {
+        requireWebStorage();
         if (key.length()<44) throw denied();
         String source=key.substring(7,43);
         var rows=db.query("SELECT payload FROM legacy_chat_imports WHERE user_id=? AND source_id=? FOR UPDATE",(r,n)->object(r.getString(1)),me,source);
@@ -283,6 +379,7 @@ public class ChatStorageService {
     }
     @Transactional
     public Map<String,String> continueLegacy(Principal principal,String key) {
+        requireWebStorage();
         long me=identity.id(principal);
         if(key.length()<44 || !key.startsWith("legacy-")) throw denied();
         String source=key.substring(7,43);
@@ -330,6 +427,7 @@ public class ChatStorageService {
     }
     @Transactional
     public void importLegacy(Principal principal,Map<String,Object> archive) {
+        requireWebStorage();
         archive=map(removeCredentials(archive));
         long me=identity.id(principal);String source=text(archive.get("sourceId"));
         if(!source.matches("[a-fA-F0-9-]{36}"))throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
@@ -357,6 +455,7 @@ public class ChatStorageService {
     }
     @Transactional
     public boolean claimDesktop(Principal principal,String key,String action,String browserSession) {
+        requireWebStorage();
         long me=identity.id(principal);if(key.length()>255)throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
         String session;
         try { session=HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(browserSession.getBytes(java.nio.charset.StandardCharsets.UTF_8))); }

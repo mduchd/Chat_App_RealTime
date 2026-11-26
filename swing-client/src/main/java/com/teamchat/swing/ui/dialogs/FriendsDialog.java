@@ -11,6 +11,11 @@ import com.teamchat.swing.ui.components.AvatarCircle;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ExecutionException;
 import java.util.function.Consumer;
 
 /**
@@ -21,6 +26,8 @@ public class FriendsDialog extends JDialog {
 
     private final CardLayout cardLayout = new CardLayout();
     private final JPanel contentCards = new JPanel(cardLayout);
+    private final String currentUserId;
+    private long friendshipsVersion;
 
     // Tab buttons
     private JButton btnTabDiscover;
@@ -39,8 +46,10 @@ public class FriendsDialog extends JDialog {
 
     private Consumer<String> onStartChatWithUser;
 
-    public FriendsDialog(Frame parent) {
+    public FriendsDialog(Frame parent, String currentUserId) {
         super(parent, "Kết bạn & Danh bạ tài khoản", true);
+        this.currentUserId = currentUserId;
+        setDefaultCloseOperation(DISPOSE_ON_CLOSE);
         setSize(480, 560);
         setLocationRelativeTo(parent);
         setResizable(false);
@@ -77,7 +86,7 @@ public class FriendsDialog extends JDialog {
         setContentPane(main);
 
         loadDiscoverUsers("");
-        loadFriendships();
+        refreshFriendships();
     }
 
     private JButton createTabBtn(String text, boolean active) {
@@ -251,114 +260,173 @@ public class FriendsDialog extends JDialog {
         btnAdd.setCursor(new Cursor(Cursor.HAND_CURSOR));
         btnAdd.addActionListener(e -> {
             btnAdd.setEnabled(false);
-            btnAdd.setText("Đã gửi");
-            new Thread(() -> {
-                try { ApiClient.sendFriendRequest(id); } catch (Exception ignored) {}
-            }).start();
+            btnAdd.setText("Đang gửi…");
+            new SwingWorker<Void, Void>() {
+                @Override
+                protected Void doInBackground() throws Exception {
+                    ApiClient.sendFriendRequest(id);
+                    return null;
+                }
+
+                @Override
+                protected void done() {
+                    if (!isDisplayable()) return;
+                    try {
+                        get();
+                        btnAdd.setText("Đã gửi");
+                        refreshFriendships();
+                    } catch (ExecutionException ex) {
+                        btnAdd.setEnabled(true);
+                        btnAdd.setText("Kết bạn");
+                        JOptionPane.showMessageDialog(FriendsDialog.this, "Không gửi được lời mời kết bạn.",
+                                "Kết bạn", JOptionPane.WARNING_MESSAGE);
+                    } catch (InterruptedException ex) {
+                        Thread.currentThread().interrupt();
+                    }
+                }
+            }.execute();
         });
         row.add(btnAdd, BorderLayout.EAST);
 
         return row;
     }
 
-    private void loadFriendships() {
-        new SwingWorker<String, Void>() {
+    public void refreshFriendships() {
+        long version = ++friendshipsVersion;
+        new SwingWorker<JsonObject, Void>() {
             @Override
-            protected String doInBackground() throws Exception {
-                return ApiClient.getFriends();
+            protected JsonObject doInBackground() throws Exception {
+                return JsonParser.parseString(ApiClient.getFriends()).getAsJsonObject();
             }
 
             @Override
             protected void done() {
+                if (version != friendshipsVersion || !isDisplayable()) return;
                 try {
-                    String json = get();
-                    JsonObject root = JsonParser.parseString(json).getAsJsonObject();
-
-                    // Render Requests
+                    renderFriendships(get());
+                } catch (ExecutionException ex) {
                     requestsListPanel.removeAll();
-                    JsonArray reqs = root.getAsJsonArray("requests");
-                    if (reqs != null && !reqs.isEmpty()) {
-                        btnTabRequests.setText("Lời mời (" + reqs.size() + ")");
-                        for (JsonElement el : reqs) {
-                            JsonObject r = el.getAsJsonObject();
-                            long reqId = r.get("id").getAsLong();
-                            String fromId = r.get("fromId").getAsString();
-                            requestsListPanel.add(createRequestRow(reqId, fromId));
-                        }
-                    } else {
-                        btnTabRequests.setText("Lời mời");
-                        requestsListPanel.add(new JLabel("Không có lời mời kết bạn nào."));
-                    }
-                    requestsListPanel.revalidate();
-                    requestsListPanel.repaint();
-
-                    // Render Contacts/Friends
                     friendsListPanel.removeAll();
-                    JsonArray contacts = root.getAsJsonArray("contacts");
-                    if (contacts != null && !contacts.isEmpty()) {
-                        btnTabFriends.setText("Bạn bè (" + contacts.size() + ")");
-                        for (JsonElement el : contacts) {
-                            JsonObject c = el.getAsJsonObject();
-                            String cId = c.get("id").getAsString();
-                            String cName = c.get("name").getAsString();
-                            String cEmail = c.has("email") && !c.get("email").isJsonNull() ? c.get("email").getAsString() : "";
-                            friendsListPanel.add(createFriendRow(cId, cName, cEmail));
-                        }
-                    } else {
-                        btnTabFriends.setText("Bạn bè (0)");
-                        friendsListPanel.add(new JLabel("Chưa có bạn bè nào."));
-                    }
-                    friendsListPanel.revalidate();
-                    friendsListPanel.repaint();
-                } catch (Exception ignored) {}
+                    requestsListPanel.add(new JLabel("Không tải được lời mời kết bạn."));
+                    friendsListPanel.add(new JLabel("Không tải được danh sách bạn bè."));
+                    repaintFriendshipLists();
+                } catch (InterruptedException ex) {
+                    Thread.currentThread().interrupt();
+                }
             }
         }.execute();
     }
 
-    private JPanel createRequestRow(long reqId, String fromId) {
+    private void renderFriendships(JsonObject data) {
+        Map<String, JsonObject> contacts = new HashMap<>();
+        for (JsonElement element : data.getAsJsonArray("contacts")) {
+            JsonObject contact = element.getAsJsonObject();
+            contacts.put(contact.get("id").getAsString(), contact);
+        }
+
+        requestsListPanel.removeAll();
+        JsonArray requests = data.getAsJsonArray("requests");
+        for (JsonElement element : requests) {
+            JsonObject request = element.getAsJsonObject();
+            boolean incoming = currentUserId.equals(request.get("toId").getAsString());
+            String partnerId = request.get(incoming ? "fromId" : "toId").getAsString();
+            JsonObject partner = contacts.get(partnerId);
+            String name = partner == null ? partnerId : partner.get("name").getAsString();
+            requestsListPanel.add(createRequestRow(request.get("id").getAsLong(), name, incoming));
+        }
+        btnTabRequests.setText(requests.isEmpty() ? "Lời mời" : "Lời mời (" + requests.size() + ")");
+        if (requests.isEmpty()) requestsListPanel.add(new JLabel("Không có lời mời kết bạn nào."));
+
+        Set<String> accepted = new HashSet<>();
+        for (JsonElement element : data.getAsJsonArray("accepted")) {
+            for (JsonElement member : element.getAsJsonArray()) {
+                String id = member.getAsString();
+                if (!currentUserId.equals(id)) accepted.add(id);
+            }
+        }
+        friendsListPanel.removeAll();
+        for (JsonElement element : data.getAsJsonArray("contacts")) {
+            JsonObject contact = element.getAsJsonObject();
+            String id = contact.get("id").getAsString();
+            if (accepted.contains(id)) {
+                String email = contact.has("email") && !contact.get("email").isJsonNull() ? contact.get("email").getAsString() : "";
+                friendsListPanel.add(createFriendRow(id, contact.get("name").getAsString(), email));
+            }
+        }
+        btnTabFriends.setText("Bạn bè (" + friendsListPanel.getComponentCount() + ")");
+        if (friendsListPanel.getComponentCount() == 0) friendsListPanel.add(new JLabel("Chưa có bạn bè nào."));
+        repaintFriendshipLists();
+    }
+
+    private void repaintFriendshipLists() {
+        requestsListPanel.revalidate();
+        requestsListPanel.repaint();
+        friendsListPanel.revalidate();
+        friendsListPanel.repaint();
+    }
+
+    private JPanel createRequestRow(long reqId, String name, boolean incoming) {
         JPanel row = new JPanel(new BorderLayout(8, 0));
         row.setBackground(Color.WHITE);
         row.setBorder(new EmptyBorder(8, 10, 8, 10));
         row.setMaximumSize(new Dimension(440, 48));
 
-        AvatarCircle av = new AvatarCircle(fromId, 32);
+        AvatarCircle av = new AvatarCircle(name, 32);
         row.add(av, BorderLayout.WEST);
 
-        JLabel lbl = new JLabel("Lời mời từ: " + fromId);
+        JLabel lbl = new JLabel((incoming ? "Lời mời từ: " : "Đã gửi tới: ") + name);
         lbl.setFont(UITheme.FONT_SUBHEADING);
         row.add(lbl, BorderLayout.CENTER);
 
         JPanel btns = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
         btns.setOpaque(false);
 
-        JButton btnAccept = new JButton("Chấp nhận");
-        btnAccept.setFont(UITheme.FONT_MEDIUM);
-        btnAccept.setBackground(UITheme.THEME_PRIMARY);
-        btnAccept.setForeground(Color.WHITE);
-        btnAccept.addActionListener(e -> {
-            new Thread(() -> {
-                try {
-                    ApiClient.acceptFriendRequest(reqId);
-                    SwingUtilities.invokeLater(this::loadFriendships);
-                } catch (Exception ignored) {}
-            }).start();
-        });
-
-        JButton btnReject = new JButton("Từ chối");
+        JButton btnReject = new JButton(incoming ? "Từ chối" : "Hủy");
         btnReject.setFont(UITheme.FONT_MEDIUM);
-        btnReject.addActionListener(e -> {
-            new Thread(() -> {
-                try {
-                    ApiClient.cancelFriendRequest(reqId);
-                    SwingUtilities.invokeLater(this::loadFriendships);
-                } catch (Exception ignored) {}
-            }).start();
-        });
-
-        btns.add(btnAccept);
+        if (incoming) {
+            JButton btnAccept = new JButton("Chấp nhận");
+            btnAccept.setFont(UITheme.FONT_MEDIUM);
+            btnAccept.setBackground(UITheme.THEME_PRIMARY);
+            btnAccept.setForeground(Color.WHITE);
+            btnAccept.addActionListener(e -> updateRequest(reqId, true, btnAccept, btnReject));
+            btnReject.addActionListener(e -> updateRequest(reqId, false, btnAccept, btnReject));
+            btns.add(btnAccept);
+        } else {
+            btnReject.addActionListener(e -> updateRequest(reqId, false, btnReject));
+        }
         btns.add(btnReject);
         row.add(btns, BorderLayout.EAST);
         return row;
+    }
+
+    private void updateRequest(long reqId, boolean accept, JButton... buttons) {
+        for (JButton button : buttons) button.setEnabled(false);
+        new SwingWorker<Void, Void>() {
+            @Override
+            protected Void doInBackground() throws Exception {
+                if (accept) {
+                    ApiClient.acceptFriendRequest(reqId);
+                } else {
+                    ApiClient.cancelFriendRequest(reqId);
+                }
+                return null;
+            }
+
+            @Override
+            protected void done() {
+                if (!isDisplayable()) return;
+                try {
+                    get();
+                } catch (ExecutionException ex) {
+                    JOptionPane.showMessageDialog(FriendsDialog.this, "Không cập nhật được lời mời kết bạn.",
+                            "Kết bạn", JOptionPane.WARNING_MESSAGE);
+                    for (JButton button : buttons) button.setEnabled(true);
+                } catch (InterruptedException ex) {
+                    Thread.currentThread().interrupt();
+                }
+                refreshFriendships();
+            }
+        }.execute();
     }
 
     private JPanel createFriendRow(String id, String name, String email) {

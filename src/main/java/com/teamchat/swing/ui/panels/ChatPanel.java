@@ -18,7 +18,10 @@ import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
 import java.awt.geom.Ellipse2D;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.function.Consumer;
 
 /**
@@ -61,7 +64,9 @@ public class ChatPanel extends JPanel {
 
     // Vùng soạn thảo tin nhắn
     private final JTextField messageInput;
+    private final Map<String, String> conversationDrafts = new HashMap<>();
     private final JButton btnSend;
+    private final JButton btnEmoji;
     private JPanel header;
     private JPanel footer;
     private RoundedPanel composerBar;
@@ -253,7 +258,7 @@ public class ChatPanel extends JPanel {
         composerBar.setBorder(new EmptyBorder(4, 10, 4, 8));
 
         // Nút mở bảng Emoji
-        JButton btnEmoji = new JButton(new VectorIcon(VectorIcon.Type.SMILE, 20, UITheme.TEXT_MUTED));
+        btnEmoji = new JButton(new VectorIcon(VectorIcon.Type.SMILE, 20, UITheme.TEXT_MUTED));
         btnEmoji.setPreferredSize(new Dimension(28, 28));
         btnEmoji.setBorder(BorderFactory.createEmptyBorder());
         btnEmoji.setBackground(Color.WHITE);
@@ -308,7 +313,24 @@ public class ChatPanel extends JPanel {
     }
 
     public void setConversation(ConversationItem conv) {
+        String previousId = currentConversation == null ? null : currentConversation.getId();
+        String nextId = conv == null ? null : conv.getId();
+        if (!Objects.equals(previousId, nextId)) {
+            String text = messageInput.getText();
+            if (previousId != null && !text.isBlank()) {
+                conversationDrafts.put(previousId, text);
+            }
+            String nextDraft = nextId == null ? null : conversationDrafts.remove(nextId);
+            messageInput.setText(nextDraft == null ? "" : nextDraft);
+        }
         this.currentConversation = conv;
+        boolean blocked = conv != null && conv.isSendBlocked();
+        messageInput.setEditable(!blocked);
+        btnSend.setEnabled(!blocked);
+        btnEmoji.setEnabled(!blocked);
+        String blockedHint = blocked ? "Hội thoại đang bị chặn." : null;
+        messageInput.setToolTipText(blockedHint);
+        btnSend.setToolTipText(blockedHint);
         if (conv == null) {
             headerNameLabel.setText("Chọn một hội thoại");
             headerAvatar.setText("?");
@@ -413,10 +435,18 @@ public class ChatPanel extends JPanel {
 
     private void handleSend() {
         String text = messageInput.getText().trim();
-        if (text.isEmpty() || currentConversation == null) return;
+        if (text.isEmpty() || currentConversation == null || currentConversation.isSendBlocked() || onSendMessage == null) {
+            return;
+        }
         messageInput.setText("");
-        if (onSendMessage != null) {
-            onSendMessage.accept(text);
+        onSendMessage.accept(text);
+    }
+
+    public void restoreDraftIfEmpty(String conversationId, String text) {
+        if (currentConversation != null && conversationId.equals(currentConversation.getId())) {
+            if (messageInput.getText().isEmpty()) messageInput.setText(text);
+        } else {
+            conversationDrafts.putIfAbsent(conversationId, text);
         }
     }
 

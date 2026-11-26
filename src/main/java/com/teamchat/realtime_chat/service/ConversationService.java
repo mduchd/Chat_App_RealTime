@@ -22,15 +22,18 @@ public class ConversationService {
     private final ConversationRepository conversationRepository;
     private final ConversationMemberRepository memberRepository;
     private final UserRepository userRepository;
+    private final ChatStorageService chatStorage;
 
     public ConversationService(
             ConversationRepository conversationRepository,
             ConversationMemberRepository memberRepository,
-            UserRepository userRepository) {
+            UserRepository userRepository,
+            ChatStorageService chatStorage) {
 
         this.conversationRepository = conversationRepository;
         this.memberRepository = memberRepository;
         this.userRepository = userRepository;
+        this.chatStorage = chatStorage;
     }
 
     // Tạo cuộc trò chuyện riêng
@@ -93,6 +96,8 @@ public class ConversationService {
             }
         }
 
+        memberRepository.flush();
+        chatStorage.publishConversationUpdate(conversation.getId());
         return conversation;
     }
 

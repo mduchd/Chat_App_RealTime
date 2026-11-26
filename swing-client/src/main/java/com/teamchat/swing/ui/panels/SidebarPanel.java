@@ -12,6 +12,7 @@ import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import java.awt.*;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.function.Consumer;
 
@@ -30,6 +31,13 @@ public class SidebarPanel extends RoundedPanel {
     private String currentFilter = "all";
 
     private Consumer<ConversationItem> onConversationSelected;
+    private Consumer<ConversationItem> onConversationOpened;
+    private Consumer<ConversationItem> onReadStatusToggle;
+    private Consumer<ConversationItem> onPinToggle;
+    private Consumer<ConversationItem> onMuteToggle;
+    private Consumer<ConversationItem> onArchiveToggle;
+    private Consumer<ConversationItem> onDeleteConversation;
+    private Consumer<ConversationItem> onBlockToggle;
     private Runnable onCreateGroupClick;
     private Runnable onFriendsClick;
 
@@ -210,6 +218,15 @@ public class SidebarPanel extends RoundedPanel {
         // Bắt chuột phải để mở menu ngữ cảnh (Context Menu giống web)
         conversationList.addMouseListener(new java.awt.event.MouseAdapter() {
             @Override
+            public void mouseClicked(java.awt.event.MouseEvent e) {
+                if (!SwingUtilities.isLeftMouseButton(e)) return;
+                int index = conversationList.locationToIndex(e.getPoint());
+                if (index >= 0 && conversationList.getCellBounds(index, index).contains(e.getPoint())) {
+                    openConversation(listModel.get(index));
+                }
+            }
+
+            @Override
             public void mousePressed(java.awt.event.MouseEvent e) {
                 if (SwingUtilities.isRightMouseButton(e)) {
                     int index = conversationList.locationToIndex(e.getPoint());
@@ -218,6 +235,13 @@ public class SidebarPanel extends RoundedPanel {
                         showContextMenu(conversationList.getModel().getElementAt(index), e.getX(), e.getY());
                     }
                 }
+            }
+        });
+        conversationList.getInputMap(JComponent.WHEN_FOCUSED).put(KeyStroke.getKeyStroke("ENTER"), "openConversation");
+        conversationList.getActionMap().put("openConversation", new AbstractAction() {
+            @Override
+            public void actionPerformed(java.awt.event.ActionEvent e) {
+                openConversation(conversationList.getSelectedValue());
             }
         });
 
@@ -233,6 +257,7 @@ public class SidebarPanel extends RoundedPanel {
         this.allConversations.clear();
         if (items != null) {
             this.allConversations.addAll(items);
+            allConversations.sort(Comparator.comparing(ConversationItem::isPinned).reversed());
         }
         filterList();
         if (!listModel.isEmpty() && conversationList.getSelectedIndex() < 0) {
@@ -244,11 +269,25 @@ public class SidebarPanel extends RoundedPanel {
         return conversationList.getSelectedValue();
     }
 
+    public String findDirectConversationId(String friendId) {
+        return allConversations.stream()
+                .filter(item -> item.isDirect() && !item.isLegacyReadOnly())
+                .filter(item -> item.getMembers().stream().anyMatch(member -> friendId.equals(member.getId())))
+                .map(ConversationItem::getId)
+                .findFirst().orElse(null);
+    }
+
     public void selectConversation(String convId) {
-        setFilter("all");
+        ConversationItem target = allConversations.stream()
+                .filter(item -> convId.equals(item.getId()))
+                .findFirst().orElse(null);
+        if (target == null) return;
+        searchField.setText("");
+        setFilter(target.isArchived() ? "archived" : "all");
         for (int i = 0; i < listModel.size(); i++) {
             if (listModel.get(i).getId().equals(convId)) {
                 conversationList.setSelectedIndex(i);
+                conversationList.ensureIndexIsVisible(i);
                 break;
             }
         }
@@ -266,6 +305,23 @@ public class SidebarPanel extends RoundedPanel {
 
     public void setOnConversationSelected(Consumer<ConversationItem> callback) {
         this.onConversationSelected = callback;
+    }
+
+    public void setOnConversationOpened(Consumer<ConversationItem> callback) {
+        this.onConversationOpened = callback;
+    }
+
+    public void setOnReadStatusToggle(Consumer<ConversationItem> callback) { this.onReadStatusToggle = callback; }
+    public void setOnPinToggle(Consumer<ConversationItem> callback) { this.onPinToggle = callback; }
+    public void setOnMuteToggle(Consumer<ConversationItem> callback) { this.onMuteToggle = callback; }
+    public void setOnArchiveToggle(Consumer<ConversationItem> callback) { this.onArchiveToggle = callback; }
+    public void setOnDeleteConversation(Consumer<ConversationItem> callback) { this.onDeleteConversation = callback; }
+    public void setOnBlockToggle(Consumer<ConversationItem> callback) { this.onBlockToggle = callback; }
+
+    private void openConversation(ConversationItem conversation) {
+        if (conversation == null || onConversationOpened == null) return;
+        if ("unread".equals(currentFilter)) setFilter("all");
+        onConversationOpened.accept(conversation);
     }
 
     public void setOnCreateGroupClick(Runnable callback) { this.onCreateGroupClick = callback; }
@@ -353,47 +409,32 @@ public class SidebarPanel extends RoundedPanel {
         JMenuItem mPin = new JMenuItem(item.isPinned() ? "Bỏ ghim hội thoại" : "Ghim hội thoại",
                 new VectorIcon(VectorIcon.Type.PIN, 14, UITheme.TEXT_MAIN));
         mPin.addActionListener(e -> {
-            item.setPinned(!item.isPinned());
-            filterList();
+            if (onPinToggle != null) onPinToggle.accept(item);
         });
 
         JMenuItem mUnread = new JMenuItem(item.getUnreadCount() > 0 ? "Đánh dấu đã đọc" : "Đánh dấu chưa đọc",
                 new VectorIcon(VectorIcon.Type.CHAT, 14, UITheme.TEXT_MAIN));
         mUnread.addActionListener(e -> {
-            item.setUnreadCount(item.getUnreadCount() > 0 ? 0 : 1);
-            filterList();
+            if (onReadStatusToggle != null) onReadStatusToggle.accept(item);
         });
 
         JMenuItem mMute = new JMenuItem(item.isMuted() ? "Bật thông báo" : "Tắt thông báo",
                 new VectorIcon(VectorIcon.Type.BELL, 14, UITheme.TEXT_MAIN));
         mMute.addActionListener(e -> {
-            item.setMuted(!item.isMuted());
-            filterList();
+            if (onMuteToggle != null) onMuteToggle.accept(item);
         });
 
         JMenuItem mArchive = new JMenuItem(item.isArchived() ? "Bỏ lưu trữ" : "Lưu trữ",
                 new VectorIcon(VectorIcon.Type.ARCHIVE, 14, UITheme.TEXT_MAIN));
         mArchive.addActionListener(e -> {
-            item.setArchived(!item.isArchived());
-            filterList();
-        });
-
-        JMenuItem mBlock = new JMenuItem("Chặn hội thoại",
-                new VectorIcon(VectorIcon.Type.BLOCK, 14, UITheme.DANGER_RED));
-        mBlock.setForeground(UITheme.DANGER_RED);
-        mBlock.addActionListener(e -> {
-            JOptionPane.showMessageDialog(this, "Đã cập nhật trạng thái chặn hội thoại.", "Thông báo", JOptionPane.INFORMATION_MESSAGE);
+            if (onArchiveToggle != null) onArchiveToggle.accept(item);
         });
 
         JMenuItem mDelete = new JMenuItem("Xóa hội thoại",
                 new VectorIcon(VectorIcon.Type.TRASH, 14, UITheme.DANGER_RED));
         mDelete.setForeground(UITheme.DANGER_RED);
         mDelete.addActionListener(e -> {
-            int confirm = JOptionPane.showConfirmDialog(this, "Bạn có chắc muốn xóa hội thoại '" + item.getName() + "'?", "Xác nhận", JOptionPane.YES_NO_OPTION);
-            if (confirm == JOptionPane.YES_OPTION) {
-                allConversations.remove(item);
-                filterList();
-            }
+            if (onDeleteConversation != null) onDeleteConversation.accept(item);
         });
 
         menu.add(mPin);
@@ -401,7 +442,15 @@ public class SidebarPanel extends RoundedPanel {
         menu.add(mMute);
         menu.add(mArchive);
         menu.addSeparator();
-        menu.add(mBlock);
+        if (item.isDirect()) {
+            JMenuItem mBlock = new JMenuItem(item.isBlocked() ? "Bỏ chặn hội thoại" : "Chặn hội thoại",
+                    new VectorIcon(VectorIcon.Type.BLOCK, 14, UITheme.DANGER_RED));
+            mBlock.setForeground(UITheme.DANGER_RED);
+            mBlock.addActionListener(e -> {
+                if (onBlockToggle != null) onBlockToggle.accept(item);
+            });
+            menu.add(mBlock);
+        }
         menu.add(mDelete);
 
         menu.show(conversationList, x, y);
