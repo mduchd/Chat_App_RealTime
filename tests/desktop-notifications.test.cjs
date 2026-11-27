@@ -76,8 +76,19 @@ test('failed desktop attempt is retryable and does not suppress sound',async()=>
 test('disabling desktop does not disable the sound setting',async()=>{
  const a=app({enabled:false});a.context.notifyIncomingMessage(a.conv,a.message);await flush();assert.equal(a.sounds.length,1);assert.equal(a.notices.length,0);
 });
-test('production static copies stay synchronized',()=>{
- for(const path of ['js/app.js','notification-worker.js','index.html'])assert.equal(fs.readFileSync(path,'utf8'),fs.readFileSync('src/main/resources/static/'+path,'utf8'));
+test('production static copies stay synchronized except for the Spring admin menu button', () => {
+    const staticRoot = 'src/main/resources/static/';
+    for (const path of ['js/app.js', 'notification-worker.js']) {
+        assert.equal(fs.readFileSync(path, 'utf8'), fs.readFileSync(staticRoot + path, 'utf8'), path);
+    }
+
+    const rootIndex = fs.readFileSync('index.html', 'utf8');
+    const springIndex = fs.readFileSync(staticRoot + 'index.html', 'utf8');
+    const adminMenuButton = /^[ \t]*<button type="button" id="accountMenuAdmin" onclick="window\.location\.href='admin\.html'">[^\r\n]*?<\/button>(?:\r?\n)?/m;
+
+    assert.match(springIndex, adminMenuButton, 'Spring index links to its admin page');
+    assert.ok(fs.existsSync(staticRoot + 'admin.html'), 'Spring admin page exists');
+    assert.equal(rootIndex, springIndex.replace(adminMenuButton, ''), 'shared index markup');
 });
 test('socket message already saved by another tab still attempts desktop delivery',async()=>{
  const handler=source.slice(source.indexOf('async function handleIncomingSocketMessage('),source.indexOf('function getInitials('));
