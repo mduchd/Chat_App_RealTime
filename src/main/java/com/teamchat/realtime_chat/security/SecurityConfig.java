@@ -3,6 +3,7 @@ package com.teamchat.realtime_chat.security;
 import org.springframework.context.annotation.Bean;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.authorization.AuthorizationDecision;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -12,6 +13,7 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -47,7 +49,8 @@ public class SecurityConfig {
     }
 
     @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http, DesktopGoogleSignIn desktopGoogle) throws Exception {
+    public SecurityFilterChain filterChain(HttpSecurity http, DesktopGoogleSignIn desktopGoogle,
+            Optional<SwingLocalAdmin> swingLocalAdmin) throws Exception {
         var webSuccess = new SavedRequestAwareAuthenticationSuccessHandler();
         webSuccess.setDefaultTargetUrl(frontendUrl);
         webSuccess.setAlwaysUseDefaultTargetUrl(true);
@@ -72,12 +75,14 @@ public class SecurityConfig {
             }, UsernamePasswordAuthenticationFilter.class)
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .csrf(csrf -> csrf.disable()) // Tạm tắt CSRF để dễ dàng test API ở môi trường dev
-            .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/", "/index.html", "/admin.html", "/logo.svg", "/notification-worker.js", "/login**", "/error", "/oauth2/**", "/login/oauth2/code/**",
+            .authorizeHttpRequests(auth -> {
+                swingLocalAdmin.ifPresent(admin -> auth.requestMatchers("/api/admin/**", "/admin.html")
+                        .access((authentication, context) -> new AuthorizationDecision(admin.allows(authentication.get()))));
+                auth.requestMatchers("/", "/index.html", "/admin.html", "/logo.svg", "/notification-worker.js", "/login**", "/error", "/oauth2/**", "/login/oauth2/code/**",
                         "/css/**", "/js/**", "/ws/**", "/ws-sockjs/**", "/ws-test.html",
                         "/api/me", "/api/me/**", "/api/auth/**", "/api/admin/**", "/uploads/**").permitAll()
-                .anyRequest().authenticated()
-            )
+                        .anyRequest().authenticated();
+            })
             .oauth2Login(oauth2 -> oauth2
                 .authorizationEndpoint(endpoint -> endpoint.authorizationRequestRepository(desktopGoogle))
                 .successHandler((request, response, authentication) -> {

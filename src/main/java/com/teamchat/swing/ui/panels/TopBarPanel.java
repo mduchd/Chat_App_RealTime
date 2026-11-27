@@ -249,13 +249,7 @@ public class TopBarPanel extends JPanel {
         menu.add(profileHeader);
         menu.addSeparator();
 
-        // Chỉ hiển thị mục Quản trị hệ thống nếu tài khoản là admin
-        boolean isAdmin = currentUser != null &&
-                ("admin@gmail.com".equalsIgnoreCase(currentUser.getEmail()) ||
-                 "admin".equalsIgnoreCase(currentUser.getName()) ||
-                 (currentUser.getEmail() != null && currentUser.getEmail().toLowerCase().startsWith("admin@")));
-
-        if (isAdmin) {
+        if (currentUser != null && currentUser.isAdmin()) {
             JMenuItem mAdmin = new JMenuItem("Quản trị hệ thống (Admin)", new VectorIcon(VectorIcon.Type.GRID, 14, UITheme.THEME_PRIMARY));
             mAdmin.addActionListener(e -> {
                 if (onAdminClick != null) onAdminClick.run();

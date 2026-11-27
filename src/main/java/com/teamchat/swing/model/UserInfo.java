@@ -7,6 +7,7 @@ public class UserInfo {
     private String phone;
     private String avatar;
     private String accountId;
+    private boolean admin;
 
     public UserInfo() {}
 
@@ -28,6 +29,8 @@ public class UserInfo {
     public void setAvatar(String avatar) { this.avatar = avatar; }
     public String getAccountId() { return accountId; }
     public void setAccountId(String accountId) { this.accountId = accountId; }
+
+    public boolean isAdmin() { return admin; }
 
     public String getInitials() {
         if (name == null || name.isBlank()) return "?";
