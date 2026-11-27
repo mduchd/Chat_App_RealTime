@@ -3,6 +3,7 @@ package com.teamchat.realtime_chat.controller;
 import com.teamchat.realtime_chat.entity.User;
 import com.teamchat.realtime_chat.repository.UserRepository;
 import com.teamchat.realtime_chat.security.DesktopGoogleSignIn;
+import com.teamchat.realtime_chat.security.SwingLocalAdmin;
 import com.teamchat.realtime_chat.service.OtpService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -38,13 +39,15 @@ public class AuthController {
     private final OtpService otpService;
     private final PasswordEncoder passwordEncoder;
     private final DesktopGoogleSignIn desktopGoogle;
+    private final Optional<SwingLocalAdmin> swingLocalAdmin;
 
     public AuthController(UserRepository userRepository, OtpService otpService, PasswordEncoder passwordEncoder,
-            DesktopGoogleSignIn desktopGoogle) {
+            DesktopGoogleSignIn desktopGoogle, Optional<SwingLocalAdmin> swingLocalAdmin) {
         this.userRepository = userRepository;
         this.otpService = otpService;
         this.passwordEncoder = passwordEncoder;
         this.desktopGoogle = desktopGoogle;
+        this.swingLocalAdmin = swingLocalAdmin;
     }
 
     /**
@@ -168,7 +171,7 @@ public class AuthController {
             String avatar = "https://ui-avatars.com/api/?name="
                     + URLEncoder.encode(displayName.trim(), StandardCharsets.UTF_8) + "&background=1d72b8&color=fff&bold=true";
             User savedUser = createAccount(cleanEmail, password, displayName.trim(), cleanPhone, avatar);
-            establishSession(savedUser, servletRequest, servletResponse);
+            establishSession(savedUser, false, servletRequest, servletResponse);
 
             Map<String, Object> userData = new HashMap<>();
             userData.put("id", savedUser.getId().toString());
@@ -208,7 +211,7 @@ public class AuthController {
             return ResponseEntity.status(HttpStatus.CONFLICT)
                     .body(Map.of("success", false, "message", "Email này đã được đăng ký."));
         }
-        return signedIn(user, request, response);
+        return signedIn(user, false, request, response);
     }
 
     private User createAccount(String email, String password, String name, String phone, String avatar) {
@@ -272,7 +275,8 @@ public class AuthController {
         // Cập nhật thời điểm đăng nhập gần nhất
         user.setLastLoginAt(LocalDateTime.now());
         userRepository.save(user);
-        return signedIn(user, servletRequest, servletResponse);
+        boolean admin = swingLocalAdmin.filter(configuredAdmin -> configuredAdmin.matches(user)).isPresent();
+        return signedIn(user, admin, servletRequest, servletResponse);
     }
 
     @PostMapping("/desktop/google")
@@ -281,14 +285,14 @@ public class AuthController {
         servletResponse.setHeader("Cache-Control", "no-store");
         return desktopGoogle.exchange(request.get("code"), request.get("verifier"))
                 .flatMap(userRepository::findById)
-                .map(user -> signedIn(user, servletRequest, servletResponse))
+                .map(user -> signedIn(user, false, servletRequest, servletResponse))
                 .orElseGet(() -> ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
                         "success", false, "message", "Phiên đăng nhập Google không hợp lệ hoặc đã hết hạn. Vui lòng thử lại.")));
     }
 
-    private ResponseEntity<Map<String, Object>> signedIn(User user, HttpServletRequest servletRequest,
+    private ResponseEntity<Map<String, Object>> signedIn(User user, boolean admin, HttpServletRequest servletRequest,
             HttpServletResponse servletResponse) {
-        establishSession(user, servletRequest, servletResponse);
+        establishSession(user, admin, servletRequest, servletResponse);
 
         Map<String, Object> userData = new HashMap<>();
         userData.put("id", user.getGoogleSub()==null ? user.getId().toString() : user.getGoogleSub());
@@ -296,17 +300,19 @@ public class AuthController {
         userData.put("email", user.getEmail());
         userData.put("avatar", user.getAvatarUrl());
         userData.put("accountId",user.getId().toString());
+        userData.put("admin", admin);
 
         return ResponseEntity.ok(Map.of("success", true,
                 "message", "Đăng nhập thành công! Chào mừng " + user.getDisplayName(), "user", userData));
     }
 
-    private void establishSession(User user, HttpServletRequest request, HttpServletResponse response) {
+    private void establishSession(User user, boolean admin, HttpServletRequest request, HttpServletResponse response) {
         request.getSession(true);
         request.changeSessionId();
         SecurityContext context = SecurityContextHolder.createEmptyContext();
-        context.setAuthentication(new UsernamePasswordAuthenticationToken(
-                user.getId().toString(), null, AuthorityUtils.createAuthorityList("ROLE_USER")));
+        var authorities = admin ? AuthorityUtils.createAuthorityList("ROLE_USER", SwingLocalAdmin.AUTHORITY)
+                : AuthorityUtils.createAuthorityList("ROLE_USER");
+        context.setAuthentication(new UsernamePasswordAuthenticationToken(user.getId().toString(), null, authorities));
         SecurityContextHolder.setContext(context);
         new HttpSessionSecurityContextRepository().saveContext(context, request, response);
     }

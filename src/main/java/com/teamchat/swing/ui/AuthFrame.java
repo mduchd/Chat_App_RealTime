@@ -12,6 +12,10 @@ import javax.swing.border.EmptyBorder;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.LinkOption;
+import java.nio.file.Path;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 
@@ -196,7 +200,30 @@ public class AuthFrame extends JFrame {
         });
         panel.add(switchLabel);
 
+        Path adminLogin = Path.of(System.getProperty("user.home"), ".chatspace", "swing-local-admin-login.txt");
+        if (Files.isRegularFile(adminLogin, LinkOption.NOFOLLOW_LINKS)) {
+            JButton openAdminLogin = new JButton("Thông tin đăng nhập Quản trị local");
+            openAdminLogin.setFont(UITheme.FONT_SMALL);
+            openAdminLogin.setForeground(UITheme.THEME_PRIMARY);
+            openAdminLogin.setAlignmentX(Component.CENTER_ALIGNMENT);
+            openAdminLogin.addActionListener(event -> openAdminLoginFile(adminLogin));
+            panel.add(Box.createVerticalStrut(8));
+            panel.add(openAdminLogin);
+        }
+
         return panel;
+    }
+
+    private void openAdminLoginFile(Path loginFile) {
+        if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.OPEN)) {
+            try {
+                Desktop.getDesktop().open(loginFile.toFile());
+                return;
+            } catch (IOException ignored) {
+                // Show the local path if the system cannot launch its text editor.
+            }
+        }
+        showError("Mở tệp thông tin đăng nhập tại: " + loginFile);
     }
 
     // =====================================================================
