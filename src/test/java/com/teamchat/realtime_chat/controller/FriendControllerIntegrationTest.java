@@ -15,7 +15,7 @@ import java.security.Principal;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-@SpringBootTest
+@SpringBootTest(properties = "chat.friends.accent-insensitive-search=true")
 @AutoConfigureMockMvc
 @Transactional
 class FriendControllerIntegrationTest {
@@ -57,13 +57,13 @@ class FriendControllerIntegrationTest {
         // Tìm kiếm không dấu
         assertEquals(
             "discover-bob",
-            friends.discover(alice, "nguyen van discoverbob").get(0).id()
+            friends.discover(alice, "nguyen van discover").get(0).id()
         );
 
         // Tìm kiếm có dấu
         assertEquals(
             "discover-bob",
-            friends.discover(alice, "Nguyễn Văn DiscoverBob").get(0).id()
+            friends.discover(alice, "Văn DiscoverBo").get(0).id()
         );
 
         // Tìm kiếm theo email
