@@ -14,6 +14,8 @@ import javax.swing.border.EmptyBorder;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import java.awt.*;
+import java.awt.event.ComponentAdapter;
+import java.awt.event.ComponentEvent;
 import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
 import java.awt.geom.Ellipse2D;
@@ -243,7 +245,24 @@ public class ChatPanel extends JPanel {
 
         scrollPane = new JScrollPane(messagesContainer);
         scrollPane.setBorder(BorderFactory.createEmptyBorder());
+        scrollPane.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
         scrollPane.getViewport().setBackground(UITheme.WINDOW_BG);
+        scrollPane.getViewport().addComponentListener(new ComponentAdapter() {
+            @Override
+            public void componentResized(ComponentEvent e) {
+                int rowWidth = getMessageRowWidth();
+                if (rowWidth <= 0) {
+                    return;
+                }
+                for (Component component : messagesContainer.getComponents()) {
+                    if (component instanceof MessageBubble bubble) {
+                        bubble.fitToWidth(rowWidth);
+                    }
+                }
+                messagesContainer.revalidate();
+                messagesContainer.repaint();
+            }
+        });
         scrollPane.getVerticalScrollBar().setPreferredSize(new Dimension(6, 0));
         add(scrollPane, BorderLayout.CENTER);
 
@@ -366,8 +385,7 @@ public class ChatPanel extends JPanel {
         if (!messages.contains(msg)) {
             messages.add(msg);
         }
-        messagesContainer.add(new MessageBubble(msg));
-        messagesContainer.add(Box.createVerticalStrut(4));
+        addMessageBubble(msg);
         messagesContainer.revalidate();
         messagesContainer.repaint();
         if (scrollPane != null) {
@@ -411,8 +429,7 @@ public class ChatPanel extends JPanel {
                 String c = msg.getContent() != null ? msg.getContent().toLowerCase() : "";
                 if (!c.contains(inChatQuery)) continue;
             }
-            messagesContainer.add(new MessageBubble(msg));
-            messagesContainer.add(Box.createVerticalStrut(4));
+            addMessageBubble(msg);
         }
         messagesContainer.revalidate();
         messagesContainer.repaint();
@@ -421,6 +438,21 @@ public class ChatPanel extends JPanel {
             scrollPane.repaint();
         }
         scrollToBottom();
+    }
+
+    private void addMessageBubble(ChatMessage message) {
+        MessageBubble bubble = new MessageBubble(message);
+        int rowWidth = getMessageRowWidth();
+        if (rowWidth > 0) {
+            bubble.fitToWidth(rowWidth);
+        }
+        messagesContainer.add(bubble);
+        messagesContainer.add(Box.createVerticalStrut(4));
+    }
+
+    private int getMessageRowWidth() {
+        Insets insets = messagesContainer.getInsets();
+        return scrollPane.getViewport().getWidth() - insets.left - insets.right;
     }
 
     private void scrollToBottom() {

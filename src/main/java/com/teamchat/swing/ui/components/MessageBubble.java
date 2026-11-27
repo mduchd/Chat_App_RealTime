@@ -1,5 +1,6 @@
 package com.teamchat.swing.ui.components;
 
+import com.formdev.flatlaf.FlatClientProperties;
 import com.teamchat.swing.model.ChatMessage;
 import com.teamchat.swing.ui.UITheme;
 
@@ -15,22 +16,21 @@ import java.awt.geom.RoundRectangle2D;
  */
 public class MessageBubble extends JPanel {
 
-    private final ChatMessage message;
+    private static final int MAX_BUBBLE_WIDTH = 400;
 
-    public MessageBubble(ChatMessage msg) {
-        this.message = msg;
+    private final JPanel bubble;
+    private final JTextArea content;
+    private final int preferredBubbleWidth;
+    private int bubbleWidth;
+
+    public MessageBubble(ChatMessage message) {
         setLayout(new BorderLayout());
         setOpaque(false);
         setBorder(new EmptyBorder(3, 10, 3, 10));
 
-        initUI();
-    }
-
-    private void initUI() {
         boolean sentByMe = message.isSentByMe();
 
-        // Bubble inner panel
-        JPanel bubble = new JPanel() {
+        bubble = new JPanel(new BorderLayout(0, 2)) {
             @Override
             protected void paintComponent(Graphics g) {
                 Graphics2D g2 = (Graphics2D) g.create();
@@ -41,7 +41,6 @@ public class MessageBubble extends JPanel {
             }
         };
         bubble.setOpaque(false);
-        bubble.setLayout(new BoxLayout(bubble, BoxLayout.Y_AXIS));
         bubble.setBorder(new EmptyBorder(6, 12, 6, 12));
 
         // Sender name for received messages (especially in group chats)
@@ -49,20 +48,18 @@ public class MessageBubble extends JPanel {
             JLabel senderLabel = new JLabel(message.getSenderName());
             senderLabel.setFont(new Font("Segoe UI", Font.BOLD, 11));
             senderLabel.setForeground(UITheme.THEME_PRIMARY);
-            senderLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
-            bubble.add(senderLabel);
-            bubble.add(Box.createVerticalStrut(2));
+            bubble.add(senderLabel, BorderLayout.NORTH);
         }
 
-        // Message content (support multi-line wrapping with HTML and crisp Segoe UI font for Vietnamese)
-        String safeText = escapeHtml(message.getContent()).replace("\r\n", "<br>").replace("\n", "<br>");
-        String textColorHex = sentByMe ? "#ffffff" : (UITheme.isDarkMode ? "#f1f5f9" : "#1e293b");
-        // font-size 10px trong Swing HTML render chuẩn nét tương đương font 12.5-13pt chuẩn hệ thống, không bị to thô
-        JLabel contentLabel = new JLabel("<html><body style='width: 310px; font-family: Dialog; font-size: 10px; line-height: 1.35; color: " + textColorHex + ";'>" + safeText + "</body></html>");
-        contentLabel.setFont(UITheme.FONT_CHAT_TEXT.deriveFont(12f));
-        contentLabel.setForeground(sentByMe ? UITheme.BUBBLE_SENT_TEXT : UITheme.BUBBLE_RECEIVED_TEXT);
-        contentLabel.setAlignmentX(sentByMe ? Component.RIGHT_ALIGNMENT : Component.LEFT_ALIGNMENT);
-        bubble.add(contentLabel);
+        content = new JTextArea(message.getContent());
+        content.setFont(UITheme.FONT_CHAT_TEXT);
+        content.setForeground(sentByMe ? UITheme.BUBBLE_SENT_TEXT : UITheme.BUBBLE_RECEIVED_TEXT);
+        content.putClientProperty(FlatClientProperties.MINIMUM_WIDTH, 0);
+        content.setOpaque(false);
+        content.setBorder(null);
+        content.setEditable(false);
+        content.setFocusable(false);
+        bubble.add(content, BorderLayout.CENTER);
 
         // Time display
         String timeStr = message.getTimeDisplay();
@@ -70,10 +67,13 @@ public class MessageBubble extends JPanel {
             JLabel timeLabel = new JLabel(timeStr);
             timeLabel.setFont(new Font("Segoe UI", Font.PLAIN, 10));
             timeLabel.setForeground(sentByMe ? new Color(255, 255, 255, 180) : UITheme.TEXT_MUTED);
-            timeLabel.setAlignmentX(sentByMe ? Component.RIGHT_ALIGNMENT : Component.LEFT_ALIGNMENT);
-            bubble.add(Box.createVerticalStrut(2));
-            bubble.add(timeLabel);
+            timeLabel.setHorizontalAlignment(sentByMe ? SwingConstants.RIGHT : SwingConstants.LEFT);
+            bubble.add(timeLabel, BorderLayout.SOUTH);
         }
+
+        preferredBubbleWidth = bubble.getPreferredSize().width;
+        content.setLineWrap(true);
+        content.setWrapStyleWord(true);
 
         // Wrapper to align left or right
         JPanel alignWrapper = new JPanel(new FlowLayout(sentByMe ? FlowLayout.RIGHT : FlowLayout.LEFT, 0, 0));
@@ -81,13 +81,23 @@ public class MessageBubble extends JPanel {
         alignWrapper.add(bubble);
 
         add(alignWrapper, BorderLayout.CENTER);
+        fitToWidth(Integer.MAX_VALUE);
     }
 
-    private String escapeHtml(String text) {
-        if (text == null) return "";
-        return text.replace("&", "&amp;")
-                   .replace("<", "&lt;")
-                   .replace(">", "&gt;")
-                   .replace("\"", "&quot;");
+    public void fitToWidth(int rowWidth) {
+        Insets rowInsets = getInsets();
+        Insets padding = bubble.getInsets();
+        int horizontalPadding = padding.left + padding.right;
+        int availableWidth = Math.max(horizontalPadding + 1, rowWidth - rowInsets.left - rowInsets.right);
+        int width = Math.min(Math.min(preferredBubbleWidth, MAX_BUBBLE_WIDTH), availableWidth);
+        if (width == bubbleWidth) {
+            return;
+        }
+
+        bubbleWidth = width;
+        // Measure the wrapped height at the width BorderLayout will give the text.
+        content.setSize(width - horizontalPadding, Short.MAX_VALUE);
+        int height = bubble.getLayout().preferredLayoutSize(bubble).height;
+        bubble.setPreferredSize(new Dimension(width, height));
     }
 }
