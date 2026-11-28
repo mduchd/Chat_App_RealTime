@@ -16,6 +16,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
+import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -58,6 +59,46 @@ class SwingLocalAdminIntegrationTest {
 
         jdbc.update("DELETE FROM users WHERE id=?", 7001);
         mvc.perform(get("/api/admin/stats").cookie(admin)).andExpect(status().isForbidden());
+    }
+
+    @Test
+    void loadsConversationAndMessageDetailsForTheLocalAdmin() throws Exception {
+        // A separate fixture account owns the conversation and sends the message.
+        insertUser(7001, ADMIN_EMAIL, "Local Operator");
+        insertUser(7020, "sender@fixture.invalid", "Fixture Sender");
+        jdbc.update("INSERT INTO conversations (id, type, name, created_by) VALUES (?, ?, ?, ?)",
+                7100, "GROUP", "Fixture Group", 7020);
+        jdbc.update("INSERT INTO conversation_members (conversation_id, user_id, role) VALUES (?, ?, ?)",
+                7100, 7020, "OWNER");
+        jdbc.update("INSERT INTO messages (id, conversation_id, sender_id, content) VALUES (?, ?, ?, ?)",
+                7200, 7100, 7020, "Fixture message");
+
+        try {
+            Cookie admin = login(ADMIN_EMAIL, true);
+            mvc.perform(get("/api/admin/stats").cookie(admin))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.totalGroups").value(1))
+                    .andExpect(jsonPath("$.totalMessages").value(1));
+
+            assertAll(
+                    () -> mvc.perform(get("/api/admin/conversations").cookie(admin))
+                            .andExpect(status().isOk())
+                            .andExpect(jsonPath("$.conversations[0].name").value("Fixture Group"))
+                            .andExpect(jsonPath("$.conversations[0].createdByName").value("Fixture Sender"))
+                            .andExpect(jsonPath("$.conversations[0].memberCount").value(1)),
+                    () -> mvc.perform(get("/api/admin/messages").cookie(admin))
+                            .andExpect(status().isOk())
+                            .andExpect(jsonPath("$.messages[0].conversationName").value("Fixture Group"))
+                            .andExpect(jsonPath("$.messages[0].senderName").value("Fixture Sender"))
+                            .andExpect(jsonPath("$.messages[0].content").value("Fixture message"))
+            );
+            mvc.perform(get("/api/admin/conversations").param("search", "fixture group").cookie(admin))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.conversations[0].id").value(7100));
+        } finally {
+            jdbc.update("DELETE FROM conversations WHERE id = ?", 7100);
+            jdbc.update("DELETE FROM users WHERE id IN (?, ?)", 7001, 7020);
+        }
     }
 
     @Test
