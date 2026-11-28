@@ -429,12 +429,12 @@ public class AdminFrame extends JFrame {
             JsonObject groupsObj;
             JsonObject msgsObj;
 
-            @Override
+                                    @Override
             protected Void doInBackground() throws Exception {
-                try { statsObj = ApiClient.getAdminStats(); } catch (Exception ignored) {}
-                try { usersObj = ApiClient.getAdminUsers(""); } catch (Exception ignored) {}
-                try { groupsObj = ApiClient.getAdminConversations(""); } catch (Exception ignored) {}
-                try { msgsObj = ApiClient.getAdminMessages(); } catch (Exception ignored) {}
+                try { statsObj = ApiClient.getAdminStats(); } catch (Exception ex) { ex.printStackTrace(); }
+                try { usersObj = ApiClient.getAdminUsers(""); } catch (Exception ex) { ex.printStackTrace(); }
+                try { groupsObj = ApiClient.getAdminConversations(""); } catch (Exception ex) { ex.printStackTrace(); }
+                try { msgsObj = ApiClient.getAdminMessages(); } catch (Exception ex) { ex.printStackTrace(); }
                 return null;
             }
 

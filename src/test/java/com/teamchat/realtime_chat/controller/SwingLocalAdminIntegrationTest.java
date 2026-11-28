@@ -61,6 +61,34 @@ class SwingLocalAdminIntegrationTest {
     }
 
     @Test
+    void adminConversationsAndMessagesReturnDetailsWithoutLazyInitError() throws Exception {
+        if (users.findById(7001L).isEmpty()) {
+            insertUser(7001, ADMIN_EMAIL, "Local Operator");
+        }
+        jdbc.update("INSERT INTO conversations (id, type, name, created_by) VALUES (8001, 'GROUP', 'Nhom Test', 7001)");
+        jdbc.update("INSERT INTO conversation_members (conversation_id, user_id, role) VALUES (8001, 7001, 'ADMIN')");
+        jdbc.update("INSERT INTO messages (id, conversation_id, sender_id, content) VALUES (9001, 8001, 7001, 'Hello admin')");
+
+        Cookie admin = login(ADMIN_EMAIL, true);
+
+        mvc.perform(get("/api/admin/conversations").cookie(admin))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.conversations[0].id").value(8001))
+                .andExpect(jsonPath("$.conversations[0].name").value("Nhom Test"))
+                .andExpect(jsonPath("$.conversations[0].createdByName").value("Local Operator"))
+                .andExpect(jsonPath("$.conversations[0].memberCount").value(1));
+
+        mvc.perform(get("/api/admin/messages").cookie(admin))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.messages[0].id").value(9001))
+                .andExpect(jsonPath("$.messages[0].conversationName").value("Nhom Test"))
+                .andExpect(jsonPath("$.messages[0].senderName").value("Local Operator"))
+                .andExpect(jsonPath("$.messages[0].content").value("Hello admin"));
+    }
+
+    @Test
     void bootstrapsAdminAndResumesAnInterruptedSetup(@TempDir Path stateDirectory) throws Exception {
         insertUser(7010, "qt@local.test", "Existing user");
         var setup = new SwingLocalAdmin(users, passwords, stateDirectory, 0, "");

@@ -141,6 +141,7 @@ public class AdminController {
      * 4. Lấy danh sách hội thoại & Nhóm chat
      */
     @GetMapping("/conversations")
+    @Transactional(readOnly = true)
     public ResponseEntity<Map<String, Object>> getConversations(@RequestParam(value = "search", required = false) String search) {
         Map<String, Object> res = new HashMap<>();
         List<Conversation> all = conversationRepository.findAll(Sort.by(Sort.Direction.DESC, "id"));
@@ -203,6 +204,7 @@ public class AdminController {
      * 6. Lấy 50 tin nhắn mới nhất trên toàn hệ thống
      */
     @GetMapping("/messages")
+    @Transactional(readOnly = true)
     public ResponseEntity<Map<String, Object>> getRecentMessages() {
         Map<String, Object> res = new HashMap<>();
         List<Message> messages = messageRepository.findAll(
